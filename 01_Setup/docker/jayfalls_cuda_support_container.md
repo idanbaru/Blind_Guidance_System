@@ -5,15 +5,23 @@
 	sudo docker pull $t
 	
 	# RUN
+	mount=/home/jetson/Blind_Guidance_System/code:/root/code
+	mount2=/home/jetson/code:/root/code2
+
 	sudo docker run -it --ipc=host \
 		--runtime=nvidia --network host \
-		-v /home/jetson/code:/root/code \ 
+		-v $mount \
+		-v $mount2 \
 		$t
 
 
 ## INSTALL DEPTHAI ON JAYFALLS' DOCKER
+	mount=/home/jetson/Blind_Guidance_System/code:/root/code
+	mount2=/home/jetson/code:/root/code2
+
 	sudo docker run -it --ipc=host --runtime=nvidia --network host \
-	    -v /home/jetson/code:/root/code \
+	    -v $mount \
+		-v $mount2 \
 	    -v /dev/bus/usb:/dev/bus/usb \
 	    --device-cgroup-rule='c 189:* rmw' \
 	    --name my_depthai_container \
@@ -59,8 +67,11 @@
 
 
 	# RUN CUSTOM IMAGE AS CONTAINER
+		mount=/home/jetson/Blind_Guidance_System/code:/root/code
+		mount2=/home/jetson/code:/root/code2
 		sudo docker run -it --ipc=host --runtime=nvidia --network host \
-		    -v /home/jetson/code:/root/code \
+		    -v $mount \
+			-v $mount2 \
 		    -v /dev/bus/usb:/dev/bus/usb \
 		    --device-cgroup-rule='c 189:* rmw' \
 		    -e DISPLAY=$DISPLAY \
@@ -69,7 +80,7 @@
 	
 	# on jetson host run:
 		xhost +local:root
-	(this allows cv2.imshow() to work inside docker
+	this allows cv2.imshow() to work inside docker
 
 	# (optional) SAVE AND SHARE IMAGE
 		sudo docker save -o my_depthai_image.tar my_custom_depthai_image

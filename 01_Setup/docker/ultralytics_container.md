@@ -1,5 +1,5 @@
 ## PULL AND START ULTRALYTICS DOCKER
-
+	
 	# PULL	
 	t=ultralytics/ultralytics:latest-jetson-jetpack4
 	sudo docker pull $t	
@@ -9,7 +9,16 @@
 		 --runtime=nvidia --network host \ 
 		-v /home/jetson/code:/ultralytics/code \
 		$t
-
+	
+	# RUN WITH MOUNTING FOLDERS
+	mount=/home/jetson/Blind_Guidance_System/code:/ultralytics/code
+	mount2=/home/jetson/code:/ultralytics/code2
+	
+	sudo docker run -it --ipc=host \
+		 --runtime=nvidia --network host \
+		 -v $mount \
+		 -v $mount2 \
+		$t
 
 ## INFORMATION ABOUT THE COMMAND FLAGS
 	sudo docker run -> Runs a new Docker container
