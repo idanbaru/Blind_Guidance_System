@@ -1,0 +1,12 @@
+df -h
+lsblk
+
+sudo apt update
+sudo apt install -y gparted
+
+sudo gparted
+> right click on the /dev/mmcblk0p1
+> Resize / Move
+> Drag space until the end
+> Click the V icon to save and apply
+

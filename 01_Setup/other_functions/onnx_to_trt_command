@@ -1,0 +1,2 @@
+trtexec --onnx=yolov8n.onnx --saveEngine=yolov8n.engine --fp16 --workspace=2048 --verbose
+### MIGHT TAKE A WHILE

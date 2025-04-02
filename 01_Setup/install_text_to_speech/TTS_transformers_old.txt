@@ -1,0 +1,32 @@
+pip install --no-cache-dir transformers sentencepiece
+pip install TTS numpy scipy soundfile
+
+sudo apt update
+sudo apt install -y libsentencepiece-dev
+pip install sentencepiece
+
+pip install transformers TTS
+
+python3 -c "import tensorflow as tf; print(tf.__version__)"
+python3 -c "from TTS.api import TTS; print(TTS.list_models())"
+
+python3 -c "import transformers; print(transformers.__version__)"
+python3 -c "import torch; print(torch.cuda.get_device_name(0))"
+python3 -c "import cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"
+
+
+from speechbrain.pretrained import Tacotron2TTSTrainable, HIFIGAN
+import torchaudio
+
+# Load the TTS model
+tacotron2 = Tacotron2TTSTrainable.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
+hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
+
+# Generate speech
+mel_output, _, _ = tacotron2.encode_text("Hello, Jetson Nano!")
+waveforms = hifi_gan.decode_batch(mel_output)
+
+# Save the audio
+torchaudio.save("output.wav", waveforms.squeeze(1), 22050)
+
+
