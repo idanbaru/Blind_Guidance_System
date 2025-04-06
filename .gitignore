@@ -1,3 +1,20 @@
+## Custom ignores (!!!)
+# Groq's personal API key
+auxiliary/config_secret.json
+auxiliary/api_code.py
+code/test_groq.py
+# Known models
+code/models/yolo11n.*
+code/models/yolo11n_*
+code/models/yolov8n.*
+code/yolov8n.*
+
+# Audio files
+talk.mp3
+# Etc
+detection.avi
+output.avi
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
