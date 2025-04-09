@@ -1,167 +1,315 @@
+# OS utilities
+from pathlib import Path
 import os
-import cv2
 import time
-import base64
-import depthai as dai
 
+# Image detection and deep learning
+import cv2
+import torch
+import numpy as np
+
+# Utilities for groq api (replacing groq library in EOL python3.6)
+import io
+import json
+import base64
+import requests
+
+# Camera stream
+import depthai as dai
+import oakd_configuration
+
+# Threads for simultaneous threads executing different tasks
+import queue
+import threading
+import subprocess
+
+# Text-to-Speech models (offline & online)
 import pyttsx3
 from gtts import gTTS
 from gtts.tts import gTTSError
 
-import queue
-import threading
+import socket
+def is_online(host="8.8.8.8", port=53, timeout=1):
+    # Tries to form a TCP connection to Google's DNS for 200ms max
+    try:
+        socket.setdefaulttimeout(timeout)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect((host, port))
+        return True
+    except socket.error:
+        return False
 
-import utilities
-import detection
-import oakd_configuration
-import snapshot_captioning
 
+# === Globals ===
+detection_queue = queue.Queue()
+speaking_event = threading.Event()
+snapshot_caption_event = threading.Event()  # SnapCap
+speak_lock = threading.Lock()
+SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
+TTS_COOLDOWN_CAPTIONING = 15 # seconds
+TTS_COOLDOWN_DETECTIONS = 5 # seconds
+
+# === Load API Key ===
+#TODO: set absolute path
+api_key_path = str((Path(__file__).parent.parent / Path('auxiliary/config_secret.json')).resolve().absolute())
+print(f"Importing groq API key from: {api_key_path}")
+if not Path(api_key_path).exists():
+    #import sys
+    raise FileNotFoundError(f'API key not found.\n  \
+                            NOTE: THE API KEY IS PRIVATE PER USER, \
+                            IF YOU\'VE CLONED THIS PROJECT YOU MUST \
+                            GET YOUR OWN KEY FROM: console.groq.com/keys')
+with open(api_key_path) as f:
+    GROQ_API_KEY = json.load(f)['GROQ_API_KEY']
+
+# === Groq API Info ===
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {GROQ_API_KEY}"
+}
 
 class OfflineTTS:
     def __init__(self):
         self.engine = pyttsx3.init()
-
+    
     def setProperty(self, prop, settings):
         self.engine.setProperty(prop, settings)
-    
+
     def speak(self, text):
         self.engine.say(text)
         self.engine.runAndWait()
 
 
-# ===== GLOBALS =====
-GROQ_API_KEY = snapshot_captioning.get_api_key()
-detection_queue = queue.Queue()
-speaking_event = threading.Event()
-snapshot_caption_event = threading.Event()  # SnapCap
-offline_tts = OfflineTTS()
-offline_tts.setProperty('rate', 150)
-online = utilities.is_online()
-
-#intro_text = f"Initializing Blind Guidance System...\n \
-#cv2 cuda support: {str(bool(cv2.cuda.getCudaEnabledDeviceCount()))}.\n \
-#torch executing on: {str(torch.cuda.get_device_name())}.\n \
-#depth-AI detecting camera: {str(bool(len(dai.Device.getAllAvailableDevices())))}.\n"
-
-
-# ===== TEXT-TO-SPEECH WORKER =====
-def speak(text: str):
+#offline_engine = pyttsx3.init()
+tts = OfflineTTS()
+tts.setProperty('rate', 125)
+# === Utility Functions ===
+def speak(text: str, caller="detection"):
     """ Speak text using gTTS (online) or pyttsx3 (offline) """
-    global speaking_event, offline_tts, online
+    global speaking_event, tts, TTS_COOLDOWN_DETECTIONS, TTS_COOLDOWN_CAPTIONING
+
     speaking_event.set()
-    if utilities.is_online() == False:
-        #if online:
-        #    online = False
-        #    offline_tts.speak(utilities.OFFLINE_TRANSITION_TEXT)
-        offline_tts.speak(text)
+    if is_online() == False:
+        tts.speak(text)
+    
     else:
         try:
-            #if not online:
-            #    online = True
-            #    gTTS(text=utilities.ONLINE_TRANSITION_TEXT, lang='en', slow=False).save('talk.mp3')
-            #    os.system('mpg123 talk.mp3 > /dev/null 2>&1')
             gTTS(text=text, lang='en', slow=False).save('talk.mp3')
-            os.system('mpg123 talk.mp3 > /dev/null 2>&1')
+            #os.system('mpg123 talk.mp3 > /dev/null 2>&1')
+            subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except gTTSError:
-            offline_tts.speak(text)
-    time.sleep(utilities.TTS_COOLDOWN)
+            tts.speak(text)
+    
+    #if caller == "detection":
+    #    time.sleep(TTS_COOLDOWN_DETECTIONS)
+    #else:
+    #    time.sleep(TTS_COOLDOWN_CAPTIONING)
     speaking_event.clear()
 
 
+def encode_image_from_cv2(image):
+    _, buffer = cv2.imencode(".jpg", image) 
+    return base64.b64encode(buffer).decode("utf-8")
+
+
+def query_groq_with_image(base64_image):
+    global speak_lock
+    # The image to be sent to the model (base64 format, received in function's arguments)
+    image_content = {
+        "type": "image_url", 
+        "image_url": {
+            "url": f"data:image/jpeg;base64,{base64_image}"
+        }
+    }
+    
+    # The prompt to be sent alongside the image (what to do with it)
+    prompt = "In a short sentence, please describe the image to a blind person."
+    
+    # Data of the request, includes the model selected for the task
+    data = {
+        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "messages": [
+            {
+                "role": "user", 
+                "content": [
+                    {"type": "text", "text": prompt},
+                    image_content,
+                ]
+            }
+        ]
+    }
+    
+    try:
+        response = requests.post(GROQ_URL, headers=GROQ_HEADERS, json=data)
+        if response.status_code == 200:
+            result = response.json()
+            text = result["choices"][0]["message"]["content"]
+            print(f"AI description: {text}\n")
+            # TAKE LOCK
+            with speak_lock:
+                speak(text, caller="captioning")
+            # RETURN LOCK
+        else:
+            print(f"GROQ_ERROR: {response.status_code}: {response.text}")
+    except Exception as e:
+        print("Exception:", e)
+
+
 def speaker_worker():
-    """Call this in a thread, constantly speaks out loud the detections from the detection queue"""
+    global speaking_event, speak_lock
+    SPEAK_COOLDOWN = 2 # seconds
+    last_spoken_time = 0
     while True:
+        # TODO: (detections, insert_time) = queue.get()
         detections = detection_queue.get()
         if detections is None:
             break
-        # DEBUG
         print(detections)
-        # DEBUG
-        speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
-        speak("I see: " + ", ".join(speak_lines))
+        
+        now = time.time()
+        # TODO: check here if time.now() - insert_time > 3 seconds then clear queue and continue (do not speak older detections)
+        if now - last_spoken_time > SPEAK_COOLDOWN:
+            if not speaking_event.is_set():
+                # ONLY EXECUTE IF LOCK IS AVAILABLE
+                with speak_lock:
+                    # TODO: check here if time.now() - insert_time > 3 seconds then clear queue and continue (do not speak older detections)
+                    speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
+                    speak("I see: " + " and ".join(speak_lines))
+                    last_spoken_time = now
+        
+        #speak(detections)
 
 
-# ===== SNAPSHOT CAPTIONING WORKER ===== 
 def snapshot_caption_worker(shared_frame_fn):
-    """Call this in a thread, periodically triggers request to Groq to shortly describe latest frame"""
-    global GROQ_API_KEY, online
+    """Call this in a thread, periodically triggers Groq with latest frame"""
     while True:
-        # Work in predefined intervals (default: once every 60 seconds)
-        time.sleep(snapshot_captioning.SNAPSHOT_CAPTIONING_INTERVAL)
-        
-        if utilities.is_online() == False:
-            if online:
-                online = False
-        
+        time.sleep(10)
+        # if is_online():
+        frame = shared_frame_fn()
+        if frame is not None:
+            b64_img = encode_image_from_cv2(frame)
+            query_groq_with_image(b64_img)
+        # end if
+        time.sleep(50)
+
+
+# LIST OF LABELS WHICH REQUIRES ATTENTION & FURTHER DETAILS
+requires_attention = ['pothole', 'crossroad', 'bus_station']
+
+class Detection:
+    def __init__(self, label, center=(0,0), depth=0):
+        self.label = label
+        self.center = center
+        self.depth = depth
+    
+    # TODO: edit magic 25 and 2 numbers depends on image resulotion
+    def __eq__(self, other):
+        if not isinstance(other, Detection):
+            return False
+        return self.label == other.label # TODO: implement the more sophisticated logic
+        #return (self.label == other.label and
+        #        abs(self.center[0] - other.center[0]) < 25 and
+        #        abs(self.center[1] - other.center[1]) < 25 and
+        #        abs(self.depth - other.depth) < 2) # allow small fluctuations (TODO: edit these magic numbers)
+
+    @staticmethod
+    def direction(x_center):
+        # TODO: define relative img size
+        IMG_SIZE = 640
+        if x_center < IMG_SIZE / 3:
+            return "left"
+        elif x_center > 2*IMG_SIZE / 3:
+            return "right"
         else:
-            if not online:
-                online = True
-            
-            frame = shared_frame_fn()
-            if frame is not None:
-                # convert frame to base64 format (for groq query) [TODO: check if resize is needed]
-                _, buffer = cv2.imencode(".jpg", frame)
-                base64_frame = base64.b64encode(buffer).decode("utf-8")
+            return "middle"
 
-                # request groq for an AI description of the frame (ONLINE ONLY)
-                snapshot_captioning.query_groq_with_image(base64_frame, GROQ_API_KEY)
-        
+    # TODO: edit different cases for different labels, for example:
+    # if label in requires_attention return Attention! {self.label} coming from the {direction(self.center[0])} in {self.depth} meters.
+    def __repr__(self):
+        return f"{self.label} at {self.center}, {self.depth:.2f}m"
 
 
-# ===== MAIN =====
-if __name__ == "__main__":
-    # Define detection history and last frame (wrapped in a list for encapsulation)
-    history = detection.DetectionHistory()
-    last_frame = [None]
+class DetectionHistory:
+    def __init__(self, max_len=10):
+        self.history = []
+        self.max_len = max_len
 
-    def get_last_frame():
-        return last_frame[0]
+    def is_empty(self):
+        if len(self.history) == 0:
+            return True
+        return False
 
-    # Start background threads: speaker worker and snapshot caption worker
-    threading.Thread(target=speaker_worker, daemon=True).start()
-    threading.Thread(target=snapshot_caption_worker, args=(get_last_frame,), daemon=True).start()
+    def has_changed(self, current_detections):
+        if not self.history or self.history[-1] != current_detections:
+            self.history.append(current_detections)
+            if len(self.history) > self.max_len:
+                self.history.pop(0)
+            return True
+        return False
 
-    # Connect to OAK-D Lite camera and start its pipeline (incl. video stream, neural network for detection and depth)
+
+#=========== Main Loop =============
+def main():
     pipeline = oakd_configuration.configure_oakd_camera()
+
+    # Define detection history and last frame
+    # TODO: add a detection class with parameters like label, amount detected, depth, center, ...
+    history = DetectionHistory()
+    latest_frame = [None]  # wrapped in list for closure access
+
+    # TODO: add here the resize logic to 128x128
+    def get_latest_frame():
+        return latest_frame[0]
+
+    # Start background threads
+    threading.Thread(target=speaker_worker, daemon=True).start()
+    threading.Thread(target=snapshot_caption_worker, args=(get_latest_frame,), daemon=True).start()
+
+    # Connect to the OAK-D Lite device and start pipeline
     with dai.Device(pipeline) as device:
         qRgb = device.getOutputQueue(name="rgb", maxSize=1, blocking=False)
         qDet = device.getOutputQueue(name="nn", maxSize=1, blocking=False)
 
         while True:
-            SPEAK_COOLDOWN = 7 # seconds
-            last_spoken_time = 0
+            # DEFINITIONS
             current_detections = []
             
             inRgb = qRgb.tryGet()
             inDet = qDet.tryGet()
 
-            # check camera stream has a valid frame
+            #if inRgb is None:
+            #    exit("KOKO")
             if inRgb is not None:
                 frame = inRgb.getCvFrame()
-                last_frame[0] = frame.copy()  # TODO: lower resolution(?) and check cuda processing options
+                latest_frame[0] = frame.copy()  # TODO: lower resolution using CUDA to 128x128
 
-                # check if camera's nn has any detections in frame
-                if inDet is not None:
-                    dets = inDet.detections
-                    for d in dets:
-                        label = oakd_configuration.labelMap[d.label]
-                        x = int((d.xmin + d.xmax) / 2 * frame.shape[1])
-                        y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
-                        z = d.spatialCoordinates.z / 1000.0  # convert millimeters to meters (.0 to insure float result)
-                        current_detections.append(detection.Detection(label=label, center=(x,y), depth=z))
-                        # DEBUG
-                        print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
-                        # DEBUG
-                    
-                    if current_detections and history.has_changed(current_detections):
-                        now = time.time()
-                        if now - last_spoken_time > SPEAK_COOLDOWN:
-                            detection_queue.put(current_detections)
-                            last_spoken_time = now
-        
-            if cv2.waitKey(1) == ord('q'):
-                break
-
-    cv2.destroyAllWindows()
-                    
+            if inRgb is not None and inDet is not None:
+                dets = inDet.detections
+                for d in dets:
+                    label = oakd_configuration.labelMap[d.label]
+                    x = int((d.xmin + d.xmax) / 2 * frame.shape[1])
+                    y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
+                    z = d.spatialCoordinates.z / 1000.0  # convert mm → meters
+                    current_detections.append(
+                        Detection(
+                            label=label,
+                            center=(x,y),
+                            depth=z
+                        )
+                    )               
                 
+                if current_detections and history.has_changed(current_detections):
+                    print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
+                    detection_queue.put(current_detections)
+                    # TODO: add time stamp for each detection and insert it as tuple (current_detections, current_time)
+
+            # IMPORTANT: DO NOT REMOVE THIS PART
+            # (eventhough there is no GUI, the waitKey allows the CPU to breath for 1 ms - waitKey(1[ms]))
+            # (this is crucial to prevent overloading of the CPU and allow the detection queue to function)
+            time.sleep(0.005)
+
+
+
+if __name__ == "__main__":
+    main()

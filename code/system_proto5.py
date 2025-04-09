@@ -181,10 +181,12 @@ def snapshot_caption_worker(shared_frame_fn):
     """Call this in a thread, periodically triggers Groq with latest frame"""
     while True:
         time.sleep(10)
+        # if is_online():
         frame = shared_frame_fn()
         if frame is not None:
             b64_img = encode_image_from_cv2(frame)
             query_groq_with_image(b64_img)
+        # end if
         time.sleep(50)
 
 

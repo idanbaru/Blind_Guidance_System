@@ -43,7 +43,8 @@ detection_queue = queue.Queue()
 speaking_event = threading.Event()
 snapshot_caption_event = threading.Event()  # SnapCap
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
-TTS_COOLDOWN = 7 # seconds
+TTS_COOLDOWN_CAPTIONING = 25 # seconds
+TTS_COOLDOWN_DETECTIONS = 7 # seconds
 
 # === Load API Key ===
 #TODO: set absolute path
@@ -81,9 +82,9 @@ class OfflineTTS:
 tts = OfflineTTS()
 tts.setProperty('rate', 125)
 # === Utility Functions ===
-def speak(text: str):
+def speak(text: str, caller="detection"):
     """ Speak text using gTTS (online) or pyttsx3 (offline) """
-    global speaking_event, tts
+    global speaking_event, tts, TTS_COOLDOWN_DETECTIONS, TTS_COOLDOWN_CAPTIONING
 
     speaking_event.set()
     if is_online() == False:
@@ -95,7 +96,11 @@ def speak(text: str):
             os.system('mpg123 talk.mp3 > /dev/null 2>&1')
         except gTTSError:
             tts.speak(text)
-    time.sleep(TTS_COOLDOWN)
+    
+    if caller == "detection":
+        time.sleep(TTS_COOLDOWN_DETECTIONS)
+    else:
+        time.sleep(TTS_COOLDOWN_CAPTIONING)
     speaking_event.clear()
 
 
@@ -136,7 +141,9 @@ def query_groq_with_image(base64_image):
             result = response.json()
             text = result["choices"][0]["message"]["content"]
             print(f"AI description: {text}\n")
-            speak(text)
+            # TAKE LOCK
+            speak(text, caller="captioning")
+            # RETURN LOCK
         else:
             print(f"GROQ_ERROR: {response.status_code}: {response.text}")
     except Exception as e:
@@ -144,13 +151,23 @@ def query_groq_with_image(base64_image):
 
 
 def speaker_worker():
+    global speaking_event
+    SPEAK_COOLDOWN = 2 # seconds
+    last_spoken_time = 0
     while True:
         detections = detection_queue.get()
         if detections is None:
             break
         print(detections)
-        #speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
-        #speak("I see: " + ", ".join(speak_lines))
+        
+        now = time.time()
+        if now - last_spoken_time > SPEAK_COOLDOWN:
+            if not speaking_event.is_set():
+                # ONLY EXECUTE IF LOCK IS AVAILABLE
+                speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
+                speak("I see: " + " and ".join(speak_lines))
+                last_spoken_time = now
+        
         #speak(detections)
 
 
@@ -335,8 +352,6 @@ def main():
         while True:
             # DEFINITIONS
             current_detections = []
-            SPEAK_COOLDOWN = 2 # seconds
-            last_spoken_time = 0
             
             inRgb = qRgb.tryGet()
             inDet = qDet.tryGet()
@@ -364,10 +379,7 @@ def main():
                     print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
                 
                 if current_detections and history.has_changed(current_detections):
-                    now = time.time()
-                    if now - last_spoken_time > SPEAK_COOLDOWN:
-                        detection_queue.put(current_detections)
-                        last_spoken_time = now
+                    detection_queue.put(current_detections)
                 
                 #labels = [labelMap[d.label] for d in dets]
                 #label_string = ", ".join(labels)
