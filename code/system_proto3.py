@@ -1,7 +1,6 @@
 # OS utilities
 from pathlib import Path
 import os
-import sys
 import time
 
 # Image detection and deep learning
@@ -27,16 +26,36 @@ import pyttsx3
 from gtts import gTTS
 from gtts.tts import gTTSError
 
+import socket
+def is_online(host="8.8.8.8", port=53, timeout=0.2):
+    # Tries to form a TCP connection to Google's DNS for 200ms max
+    try:
+        socket.setdefaulttimeout(timeout)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.connect((host, port))
+        return True
+    except socket.error:
+        return False
+
 
 # === Globals ===
 detection_queue = queue.Queue()
 speaking_event = threading.Event()
 snapshot_caption_event = threading.Event()  # SnapCap
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
+TTS_COOLDOWN = 2 # seconds
 
 # === Load API Key ===
 #TODO: set absolute path
-with open('../auxiliary/config_secret.json') as f:
+api_key_path = str((Path(__file__).parent.parent / Path('auxiliary/config_secret.json')).resolve().absolute())
+print(f"Importing groq API key from: {api_key_path}")
+if not Path(api_key_path).exists():
+    #import sys
+    raise FileNotFoundError(f'API key not found.\n  \
+                            NOTE: THE API KEY IS PRIVATE PER USER, \
+                            IF YOU\'VE CLONED THIS PROJECT YOU MUST \
+                            GET YOUR OWN KEY FROM: console.groq.com/keys')
+with open(api_key_path) as f:
     GROQ_API_KEY = json.load(f)['GROQ_API_KEY']
 
 # === Groq API Info ===
@@ -46,18 +65,37 @@ GROQ_HEADERS = {
     "Authorization": f"Bearer {GROQ_API_KEY}"
 }
 
+class OfflineTTS:
+    def __init__(self):
+        self.engine = pyttsx3.init()
+    
+    def setProperty(self, prop, settings):
+        self.engine.setProperty(prop, settings)
+
+    def speak(self, text):
+        self.engine.say(text)
+        self.engine.runAndWait()
+
+
+#offline_engine = pyttsx3.init()
+tts = OfflineTTS()
+tts.setProperty('rate', 125)
 # === Utility Functions ===
 def speak(text: str):
     """ Speak text using gTTS (online) or pyttsx3 (offline) """
-    global speaking_event
+    global speaking_event, tts
+
     speaking_event.set()
-    try:
-        gTTS(text=text, lang='en', slow=False).save('talk.mp3')
-        os.system('mpg123 talk.mp3 > /dev/null 2>&1')
-    except gTTSError:
-        engine = pyttsx3.init()
-        engine.say(text)
-        engine.runAndWait()
+    if is_online() == False:
+        tts.speak(text)
+    
+    else:
+        try:
+            gTTS(text=text, lang='en', slow=False).save('talk.mp3')
+            os.system('mpg123 talk.mp3 > /dev/null 2>&1')
+        except gTTSError:
+            tts.speak(text)
+    time.sleep(TTS_COOLDOWN)
     speaking_event.clear()
 
 
@@ -111,8 +149,8 @@ def speaker_worker():
         if detections is None:
             break
         print(detections)
-        #speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
-        #speak("I see: " + ", ".join(speak_lines))
+        speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
+        speak("I see: " + ", ".join(speak_lines))
         #speak(detections)
 
 
@@ -140,8 +178,8 @@ class Detection:
         if not isinstance(other, Detection):
             return False
         return (self.label == other.label and
-                abs(self.center[0] - other.center[0] < 25) and
-                abs(self.center[1] - other.center[1] < 25) and
+                abs(self.center[0] - other.center[0]) < 25 and
+                abs(self.center[1] - other.center[1]) < 25 and
                 abs(self.depth - other.depth) < 2) # allow small fluctuations (TODO: edit these magic numbers)
 
     @staticmethod
@@ -187,7 +225,6 @@ def main():
     #nnPath = str((Path(__file__).parent / Path('yolo11n.blob')).resolve().absolute()) # OAK-D LITE SUPPORTS YOLOv5~v8 (!!!)
     print(f"Importing neural network from: {nnPath}")
     if not Path(nnPath).exists():
-        import sys
         raise FileNotFoundError(f'Required file/s not found')
 
     labelMap = [
@@ -302,11 +339,13 @@ def main():
             inRgb = qRgb.tryGet()
             inDet = qDet.tryGet()
 
+            #if inRgb is None:
+            #    exit("KOKO")
             if inRgb is not None:
                 frame = inRgb.getCvFrame()
                 latest_frame[0] = frame.copy()  # TODO: lower resolution using CUDA to 128x128
 
-            if inDet is not None:
+            if inRgb is not None and inDet is not None:
                 dets = inDet.detections
                 for d in dets:
                     label = labelMap[d.label]
