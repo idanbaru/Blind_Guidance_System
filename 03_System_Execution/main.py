@@ -1,18 +1,17 @@
-# OS utilities
-from pathlib import Path
+# Utilities
 import os
 import time
+import utilities
+from pathlib import Path
 
 # Image detection and deep learning
 import cv2
-import torch
+#import torch
 import numpy as np
+import detection
 
 # Utilities for groq api (replacing groq library in EOL python3.6)
-import io
-import json
 import base64
-import requests
 import snapshot_captioning
 
 # Camera stream
@@ -30,19 +29,8 @@ from gtts import gTTS
 from gtts.tts import gTTSError
 
 
-import socket
-def is_online(host="8.8.8.8", port=53, timeout=1):
-    # Tries to form a TCP connection to Google's DNS for 200ms max
-    try:
-        socket.setdefaulttimeout(timeout)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect((host, port))
-        return True
-    except socket.error:
-        return False
-
 # === Globals ===
-detection_queue = queue.Queue()
+detection_queue = queue.Queue(maxsize=5)
 speaking_event = threading.Event()
 snapshot_caption_event = threading.Event()  # SnapCap
 speak_lock = threading.Lock()
@@ -50,6 +38,7 @@ SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 TTS_COOLDOWN_CAPTIONING = 15 # seconds
 TTS_COOLDOWN_DETECTIONS = 5 # seconds
 SYSTEM_LANGUAGE = 'he'
+
 
 class OfflineTTS:
     def __init__(self):
@@ -74,7 +63,7 @@ def speak(text: str, language='en', caller="detection"):
         language = 'iw'  # for some reason gtts addresses hebrew as 'iw'
     # TODO: check if speaking_event is necessary because implementation with lock
     speaking_event.set()
-    if is_online() == False:
+    if utilities.is_online() == False:
         tts.speak(text)
     
     else:
@@ -88,7 +77,7 @@ def speak(text: str, language='en', caller="detection"):
 
 
 def speaker_worker():
-    global speaking_event, speak_lock
+    global speaking_event, speak_lock, SYSTEM_LANGUAGE
     SPEAK_COOLDOWN = 2 # seconds
     last_spoken_time = 0
     while True:
@@ -105,8 +94,10 @@ def speaker_worker():
                 # ONLY EXECUTE IF LOCK IS AVAILABLE
                 with speak_lock:
                     # TODO: check here if time.now() - insert_time > 3 seconds then clear queue and continue (do not speak older detections)
-                    speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
-                    speak("I see: " + " and ".join(speak_lines))
+                    #speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
+                    text = "I see: " + " and ".join([d.__repr__() for d in detections])
+                    print(text) # TODO: add log functionality to log everything that the system speaks
+                    speak(text) # TODO: uncomment this
                     last_spoken_time = now
         
         #speak(detections)
@@ -138,68 +129,13 @@ def snapshot_caption_worker(shared_frame_fn):
         time.sleep(50)
 
 
-# LIST OF LABELS WHICH REQUIRES ATTENTION & FURTHER DETAILS
-requires_attention = ['pothole', 'crossroad', 'bus_station']
-
-class Detection:
-    def __init__(self, label, center=(0,0), depth=0):
-        self.label = label
-        self.center = center
-        self.depth = depth
-    
-    # TODO: edit magic 25 and 2 numbers depends on image resulotion
-    def __eq__(self, other):
-        if not isinstance(other, Detection):
-            return False
-        return self.label == other.label # TODO: implement the more sophisticated logic
-        #return (self.label == other.label and
-        #        abs(self.center[0] - other.center[0]) < 25 and
-        #        abs(self.center[1] - other.center[1]) < 25 and
-        #        abs(self.depth - other.depth) < 2) # allow small fluctuations (TODO: edit these magic numbers)
-
-    @staticmethod
-    def direction(x_center):
-        # TODO: define relative img size
-        IMG_SIZE = 640
-        if x_center < IMG_SIZE / 3:
-            return "left"
-        elif x_center > 2*IMG_SIZE / 3:
-            return "right"
-        else:
-            return "middle"
-
-    # TODO: edit different cases for different labels, for example:
-    # if label in requires_attention return Attention! {self.label} coming from the {direction(self.center[0])} in {self.depth} meters.
-    def __repr__(self):
-        return f"{self.label} at {self.center}, {self.depth:.2f}m"
-
-
-class DetectionHistory:
-    def __init__(self, max_len=10):
-        self.history = []
-        self.max_len = max_len
-
-    def is_empty(self):
-        if len(self.history) == 0:
-            return True
-        return False
-
-    def has_changed(self, current_detections):
-        if not self.history or self.history[-1] != current_detections:
-            self.history.append(current_detections)
-            if len(self.history) > self.max_len:
-                self.history.pop(0)
-            return True
-        return False
-
-
 #=========== Main Loop =============
 def main():
     pipeline = oakd_configuration.configure_oakd_camera()
 
     # Define detection history and last frame
     # TODO: add a detection class with parameters like label, amount detected, depth, center, ...
-    history = DetectionHistory()
+    history = detection.DetectionHistory()
     latest_frame = [None]  # wrapped in list for closure access
 
     # TODO: add here the resize logic to 128x128
@@ -234,7 +170,7 @@ def main():
                         y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
                         z = d.spatialCoordinates.z / 1000.0  # convert millimeters to meters
                         current_detections.append(
-                            Detection(
+                            detection.Detection(
                                 label=label,
                                 center=(x,y),
                                 depth=z
@@ -242,7 +178,8 @@ def main():
                         )               
                     
                     if current_detections and history.has_changed(current_detections):
-                        print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
+                        #print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
+                        print(current_detections)
                         detection_queue.put(current_detections)
                         # TODO: add time stamp for each detection and insert it as tuple (current_detections, current_time)
 

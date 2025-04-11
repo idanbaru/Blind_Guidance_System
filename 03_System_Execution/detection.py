@@ -1,4 +1,4 @@
-
+# LIST OF LABELS WHICH REQUIRES ATTENTION & FURTHER DETAILS
 requires_attention = ['pothole', 'crossroad', 'bus_station']
 
 class Detection:
@@ -11,18 +11,18 @@ class Detection:
     def __eq__(self, other):
         if not isinstance(other, Detection):
             return False
-        return (self.label == other.label and
-                abs(self.center[0] - other.center[0]) < 25 and
-                abs(self.center[1] - other.center[1]) < 25 and
-                abs(self.depth - other.depth) < 2) # allow small fluctuations (TODO: edit these magic numbers)
+        return self.label == other.label # TODO: implement the more sophisticated logic
+        #return (self.label == other.label and
+        #        abs(self.center[0] - other.center[0]) < 25 and
+        #        abs(self.center[1] - other.center[1]) < 25 and
+        #        abs(self.depth - other.depth) < 2) # allow small fluctuations (TODO: edit these magic numbers)
 
-    @staticmethod
-    def direction(x_center):
+    def direction(self):
         # TODO: define relative img size
         IMG_SIZE = 640
-        if x_center < IMG_SIZE / 3:
+        if self.center[0] < IMG_SIZE / 3:
             return "left"
-        elif x_center > 2*IMG_SIZE / 3:
+        elif self.center[0] > 2*IMG_SIZE / 3:
             return "right"
         else:
             return "middle"
@@ -30,7 +30,7 @@ class Detection:
     # TODO: edit different cases for different labels, for example:
     # if label in requires_attention return Attention! {self.label} coming from the {direction(self.center[0])} in {self.depth} meters.
     def __repr__(self):
-        return f"{self.label} at {self.center}, {self.depth:.2f}m"
+        return f"{self.label} in {self.depth:.2f} meters to the {self.direction()}"
 
 
 class DetectionHistory:
@@ -50,4 +50,3 @@ class DetectionHistory:
                 self.history.pop(0)
             return True
         return False
-    

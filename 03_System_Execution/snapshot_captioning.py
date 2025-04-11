@@ -59,3 +59,8 @@ def query_groq_with_image(base64_image, api_key, language='en'):
         print("Exception:", e) 
     
     return ""
+
+
+#if __name__ == "__main__":
+    # Potential code here to show groq request in action (without sending an image?)
+    
