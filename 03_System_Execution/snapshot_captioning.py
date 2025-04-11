@@ -4,7 +4,7 @@ import utilities
 from pathlib import Path
 
 SNAPSHOT_CAPTIONING_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-SNAPSHOT_CAPTIONING_PROMPT = "In a very short sentence, please describe the image to a blind person."
+SNAPSHOT_CAPTIONING_PROMPT = "In a short sentence, please describe the image to a blind person."
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 
 def get_api_key():

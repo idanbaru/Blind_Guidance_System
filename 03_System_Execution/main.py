@@ -13,6 +13,7 @@ import io
 import json
 import base64
 import requests
+import snapshot_captioning
 
 # Camera stream
 import depthai as dai
@@ -28,6 +29,7 @@ import pyttsx3
 from gtts import gTTS
 from gtts.tts import gTTSError
 
+
 import socket
 def is_online(host="8.8.8.8", port=53, timeout=1):
     # Tries to form a TCP connection to Google's DNS for 200ms max
@@ -39,7 +41,6 @@ def is_online(host="8.8.8.8", port=53, timeout=1):
     except socket.error:
         return False
 
-
 # === Globals ===
 detection_queue = queue.Queue()
 speaking_event = threading.Event()
@@ -49,25 +50,6 @@ SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 TTS_COOLDOWN_CAPTIONING = 15 # seconds
 TTS_COOLDOWN_DETECTIONS = 5 # seconds
 
-# === Load API Key ===
-#TODO: set absolute path
-api_key_path = str((Path(__file__).parent.parent / Path('auxiliary/config_secret.json')).resolve().absolute())
-print(f"Importing groq API key from: {api_key_path}")
-if not Path(api_key_path).exists():
-    #import sys
-    raise FileNotFoundError(f'API key not found.\n  \
-                            NOTE: THE API KEY IS PRIVATE PER USER, \
-                            IF YOU\'VE CLONED THIS PROJECT YOU MUST \
-                            GET YOUR OWN KEY FROM: console.groq.com/keys')
-with open(api_key_path) as f:
-    GROQ_API_KEY = json.load(f)['GROQ_API_KEY']
-
-# === Groq API Info ===
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {GROQ_API_KEY}"
-}
 
 class OfflineTTS:
     def __init__(self):
@@ -108,54 +90,6 @@ def speak(text: str, caller="detection"):
     speaking_event.clear()
 
 
-def encode_image_from_cv2(image):
-    _, buffer = cv2.imencode(".jpg", image) 
-    return base64.b64encode(buffer).decode("utf-8")
-
-
-def query_groq_with_image(base64_image):
-    global speak_lock
-    # The image to be sent to the model (base64 format, received in function's arguments)
-    image_content = {
-        "type": "image_url", 
-        "image_url": {
-            "url": f"data:image/jpeg;base64,{base64_image}"
-        }
-    }
-    
-    # The prompt to be sent alongside the image (what to do with it)
-    prompt = "In a short sentence, please describe the image to a blind person."
-    
-    # Data of the request, includes the model selected for the task
-    data = {
-        "model": "meta-llama/llama-4-scout-17b-16e-instruct",
-        "messages": [
-            {
-                "role": "user", 
-                "content": [
-                    {"type": "text", "text": prompt},
-                    image_content,
-                ]
-            }
-        ]
-    }
-    
-    try:
-        response = requests.post(GROQ_URL, headers=GROQ_HEADERS, json=data)
-        if response.status_code == 200:
-            result = response.json()
-            text = result["choices"][0]["message"]["content"]
-            print(f"AI description: {text}\n")
-            # TAKE LOCK
-            with speak_lock:
-                speak(text, caller="captioning")
-            # RETURN LOCK
-        else:
-            print(f"GROQ_ERROR: {response.status_code}: {response.text}")
-    except Exception as e:
-        print("Exception:", e)
-
-
 def speaker_worker():
     global speaking_event, speak_lock
     SPEAK_COOLDOWN = 2 # seconds
@@ -183,13 +117,22 @@ def speaker_worker():
 
 def snapshot_caption_worker(shared_frame_fn):
     """Call this in a thread, periodically triggers Groq with latest frame"""
+    def encode_image_from_cv2(image):
+        _, buffer = cv2.imencode(".jpg", image) 
+        return base64.b64encode(buffer).decode("utf-8")
+    global speak_lock
+    GROQ_API_KEY = snapshot_captioning.get_api_key()
     while True:
         time.sleep(10)
         # if is_online():
         frame = shared_frame_fn()
         if frame is not None:
-            b64_img = encode_image_from_cv2(frame)
-            query_groq_with_image(b64_img)
+            b64_frame = encode_image_from_cv2(frame)
+            # TODO: try: here and catch HTML exception after 3 failed requests
+            frame_caption = snapshot_captioning.query_groq_with_image(base64_image=b64_frame, api_key=GROQ_API_KEY)
+            print(frame_caption)
+            with speak_lock:
+                speak(text=frame_caption, caller="captioning")
         # end if
         time.sleep(50)
 
@@ -278,36 +221,34 @@ def main():
             inRgb = qRgb.tryGet()
             inDet = qDet.tryGet()
 
-            #if inRgb is None:
-            #    exit("KOKO")
-            if inRgb is not None:
+            if inRgb is not None:   # AN RGB FRAME WAS CAPTURED
                 frame = inRgb.getCvFrame()
                 latest_frame[0] = frame.copy()  # TODO: lower resolution using CUDA to 128x128
 
-            if inRgb is not None and inDet is not None:
-                dets = inDet.detections
-                for d in dets:
-                    label = oakd_configuration.labelMap[d.label]
-                    x = int((d.xmin + d.xmax) / 2 * frame.shape[1])
-                    y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
-                    z = d.spatialCoordinates.z / 1000.0  # convert mm → meters
-                    current_detections.append(
-                        Detection(
-                            label=label,
-                            center=(x,y),
-                            depth=z
-                        )
-                    )               
-                
-                if current_detections and history.has_changed(current_detections):
-                    print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
-                    detection_queue.put(current_detections)
-                    # TODO: add time stamp for each detection and insert it as tuple (current_detections, current_time)
+                if inDet is not None:   # THE NN DETECTED OBJECTS IN THE FRAME
+                    dets = inDet.detections
+                    for d in dets:
+                        label = oakd_configuration.labelMap[d.label]
+                        x = int((d.xmin + d.xmax) / 2 * frame.shape[1])
+                        y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
+                        z = d.spatialCoordinates.z / 1000.0  # convert millimeters to meters
+                        current_detections.append(
+                            Detection(
+                                label=label,
+                                center=(x,y),
+                                depth=z
+                            )
+                        )               
+                    
+                    if current_detections and history.has_changed(current_detections):
+                        print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
+                        detection_queue.put(current_detections)
+                        # TODO: add time stamp for each detection and insert it as tuple (current_detections, current_time)
 
             # IMPORTANT: DO NOT REMOVE THIS PART
-            # (eventhough there is no GUI, the waitKey allows the CPU to breath for 1 ms - waitKey(1[ms]))
-            # (this is crucial to prevent overloading of the CPU and allow the detection queue to function)
-            time.sleep(0.005)
+            # There must be a certain pause between each frame handling to allow the 2 worker threads (speaking the detections and the image captioning) time to execute
+            # This is crucial to prevent overloading of the CPU and allow the speaker worker to empty the detection queue in a reasonable time
+            time.sleep(0.005)   # 5 milliseconds
 
 
 
