@@ -5,6 +5,7 @@ from pathlib import Path
 
 SNAPSHOT_CAPTIONING_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 SNAPSHOT_CAPTIONING_PROMPT = "In a short sentence, please describe the image to a blind person."
+SNAPSHOT_CAPTIONING_PROMPT_HE = "במשפט קצר, תאר את התמונה לאדם עיוור"
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 
 def get_api_key():
@@ -17,7 +18,7 @@ def get_api_key():
     return key
 
 
-def query_groq_with_image(base64_image, api_key):
+def query_groq_with_image(base64_image, api_key, language='en'):
    # The image to be sent to the model (base64 format, received in function's arguments)
     image_content = {
         "type": "image_url", 
@@ -27,19 +28,19 @@ def query_groq_with_image(base64_image, api_key):
     }
     
     # Data of the request, includes the model selected for the task and the prompt given to the model
+    prompt = SNAPSHOT_CAPTIONING_PROMPT_HE if language == 'he' else SNAPSHOT_CAPTIONING_PROMPT
     data = {
         "model": SNAPSHOT_CAPTIONING_MODEL,
         "messages": [
             {
                 "role": "user", 
                 "content": [
-                    {"type": "text", "text": SNAPSHOT_CAPTIONING_PROMPT},
+                    {"type": "text", "text": prompt},
                     image_content,
                 ]
             }
         ]
     }
-    
 
     GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
     GROQ_HEADERS = {
@@ -52,9 +53,6 @@ def query_groq_with_image(base64_image, api_key):
         if response.status_code == 200:
             result = response.json()
             return result["choices"][0]["message"]["content"]
-            #text = result["choices"][0]["message"]["content"]
-            #print(f"AI description: {text}\n")
-            #speak(text)
         else:
             print(f"GROQ_ERROR: {response.status_code}: {response.text}")
     except Exception as e:

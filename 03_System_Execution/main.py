@@ -49,7 +49,7 @@ speak_lock = threading.Lock()
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 TTS_COOLDOWN_CAPTIONING = 15 # seconds
 TTS_COOLDOWN_DETECTIONS = 5 # seconds
-
+SYSTEM_LANGUAGE = 'he'
 
 class OfflineTTS:
     def __init__(self):
@@ -67,26 +67,23 @@ class OfflineTTS:
 tts = OfflineTTS()
 tts.setProperty('rate', 125)
 # === Utility Functions ===
-def speak(text: str, caller="detection"):
+def speak(text: str, language='en', caller="detection"):
     """ Speak text using gTTS (online) or pyttsx3 (offline) """
     global speaking_event, tts, TTS_COOLDOWN_DETECTIONS, TTS_COOLDOWN_CAPTIONING
-
+    if language == 'he':
+        language = 'iw'  # for some reason gtts addresses hebrew as 'iw'
+    # TODO: check if speaking_event is necessary because implementation with lock
     speaking_event.set()
     if is_online() == False:
         tts.speak(text)
     
     else:
         try:
-            gTTS(text=text, lang='en', slow=False).save('talk.mp3')
+            gTTS(text=text, lang=language, slow=False).save('talk.mp3')
             #os.system('mpg123 talk.mp3 > /dev/null 2>&1')
             subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except gTTSError:
             tts.speak(text)
-    
-    #if caller == "detection":
-    #    time.sleep(TTS_COOLDOWN_DETECTIONS)
-    #else:
-    #    time.sleep(TTS_COOLDOWN_CAPTIONING)
     speaking_event.clear()
 
 
@@ -120,7 +117,7 @@ def snapshot_caption_worker(shared_frame_fn):
     def encode_image_from_cv2(image):
         _, buffer = cv2.imencode(".jpg", image) 
         return base64.b64encode(buffer).decode("utf-8")
-    global speak_lock
+    global speak_lock, SYSTEM_LANGUAGE
     GROQ_API_KEY = snapshot_captioning.get_api_key()
     while True:
         time.sleep(10)
@@ -129,10 +126,14 @@ def snapshot_caption_worker(shared_frame_fn):
         if frame is not None:
             b64_frame = encode_image_from_cv2(frame)
             # TODO: try: here and catch HTML exception after 3 failed requests
-            frame_caption = snapshot_captioning.query_groq_with_image(base64_image=b64_frame, api_key=GROQ_API_KEY)
+            frame_caption = snapshot_captioning.query_groq_with_image(
+                base64_image=b64_frame,
+                api_key=GROQ_API_KEY,
+                language=SYSTEM_LANGUAGE
+            )
             print(frame_caption)
             with speak_lock:
-                speak(text=frame_caption, caller="captioning")
+                speak(text=frame_caption, language=SYSTEM_LANGUAGE, caller="captioning")
         # end if
         time.sleep(50)
 
