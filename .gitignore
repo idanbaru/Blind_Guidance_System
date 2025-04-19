@@ -11,6 +11,9 @@ code/test_groq.py
 02_Model_Training/annotated_outdoor_xml.zip
 02_Model_Training/annotated_outdoor_yolo.zip
 
+# YOLO training runs
+02_Model_Training/runs/*
+
 # Known models
 code/models/yolo11n.*
 code/models/yolo11n_*
@@ -194,3 +197,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+02_Model_Training/yolo11n.pt
+02_Model_Training/best.onnx
+02_Model_Training/best5.onnx
