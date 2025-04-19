@@ -37,7 +37,7 @@ speak_lock = threading.Lock()
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 TTS_COOLDOWN_CAPTIONING = 15 # seconds
 TTS_COOLDOWN_DETECTIONS = 5 # seconds
-SYSTEM_LANGUAGE = 'he'
+SYSTEM_LANGUAGE = 'en'
 
 
 class OfflineTTS:
