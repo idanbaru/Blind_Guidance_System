@@ -93,7 +93,7 @@ def configure_oakd_camera(syncNN=True, nnPath=""):
 
     # Enable spatial detection and sets the depth of each detection to be the average of points
     #detectionNetwork.setSpatialBoundingBoxScaleFactor(0.5)
-    detectionNetwork.setSpatialCalculationAlgorithm(dai.SpatialLocationCalculatorAlgorithm.AVERAGE)
+    detectionNetwork.setSpatialCalculationAlgorithm(dai.SpatialLocationCalculatorAlgorithm.MIN)
 
 
     # Linking (syncNN=True to pass video stream through the neurtal network) 
