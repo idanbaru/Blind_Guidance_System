@@ -1,6 +1,8 @@
 # Utilities
 import os
 import time
+from datetime import datetime
+import argparse
 import utilities
 from pathlib import Path
 
@@ -140,7 +142,23 @@ def snapshot_caption_worker(shared_frame_fn):
 
 #=========== Main Loop =============
 def main():
-    pipeline = oakd_configuration.configure_oakd_camera()
+    parser = argparse.ArgumentParser(description="Run OAK-D with optional model path")
+    parser.add_argument('--indoor', action='store_true', help='Use indoor model')
+    parser.add_argument('--outdoor', action='store_true', help='Use outdoor model')
+    args = parser.parse_args()
+
+    path = None
+    if args.indoor:
+        print("loading indoor model")
+        path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_indoor_5shave.blob').resolve())
+    elif args.outdoor:
+        print("loading outdoor model")
+        path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_outdoor_5shave.blob').resolve())
+
+    if path:
+        pipeline = oakd_configuration.configure_oakd_camera(nnPath=path)
+    else:
+        pipeline = oakd_configuration.configure_oakd_camera()
 
     # Define detection history and last frame
     # TODO: add a detection class with parameters like label, amount detected, depth, center, ...

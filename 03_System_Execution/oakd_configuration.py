@@ -10,26 +10,47 @@ BB_SCALE_FACTOR = 0.5
 DEPTH_THRESHOLD_LOW = 100 # in millimeters
 DEPTH_THRESHOLD_HIGH = 10000 # in millimeters
 
-
+#FIXME Change labelMap to support indoor and outdoor settings
 labelMap = [
-        "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
-        "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",   "parking meter", "bench",
-        "bird",           "cat",        "dog",           "horse",         "sheep",       "cow",           "elephant",
-        "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",    "handbag",       "tie",
-        "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball", "kite",          "baseball bat",
-        "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",      "wine glass",    "cup",
-        "fork",           "knife",      "spoon",         "bowl",          "banana",      "apple",         "sandwich",
-        "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",       "donut",         "cake",
-        "chair",          "sofa",       "pottedplant",   "bed",           "diningtable", "toilet",        "tvmonitor",
-        "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",  "microwave",     "oven",
-        "toaster",        "sink",       "refrigerator",  "book",          "clock",       "vase",          "scissors",
-        "teddy bear",     "hair drier", "toothbrush"
-    ]
+            "bus",
+            "bus_station",
+            "car",
+            "crossroad",
+            "person",
+            "pothole",
+            "stairs_down",
+            "stairs_up"
+        ]
+# labelMap = [
+#         "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
+#         "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",   "parking meter", "bench",
+#         "bird",           "cat",        "dog",           "horse",         "sheep",       "cow",           "elephant",
+#         "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",    "handbag",       "tie",
+#         "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball", "kite",          "baseball bat",
+#         "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",      "wine glass",    "cup",
+#         "fork",           "knife",      "spoon",         "bowl",          "banana",      "apple",         "sandwich",
+#         "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",       "donut",         "cake",
+#         "chair",          "sofa",       "pottedplant",   "bed",           "diningtable", "toilet",        "tvmonitor",
+#         "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",  "microwave",     "oven",
+#         "toaster",        "sink",       "refrigerator",  "book",          "clock",       "vase",          "scissors",
+#         "teddy bear",     "hair drier", "toothbrush"
+#     ]
+
+labelMap_indoor = [
+        "person", "dog",         "cat",        "backpack",     "umbrella",   "suitcase",
+        "bottle", "wine glass",  "cup",        "fork",         "knife",      "spoon",
+        "bowl",   "banana",      "apple",      "sandwich",     "orange",     "broccoli",
+        "carrot", "hot dog",     "pizza",      "donut",        "cake",       "chair",
+        "sofa",   "pottedplant", "bed",        "diningtable",  "toilet",     "tvmonitor",
+        "laptop", "mouse",       "remote",     "keyboard",     "cell phone", "microwave", 
+        "oven",   "toaster",     "sink",       "refrigerator", "book",       "clock",
+        "vase",   "scissors",    "hair drier", "toothbrush"
+]
 
 def get_nn_path():
     # Get yolo model blob file path in an absolute format
-    nnPath = str((Path(__file__).parent.parent / Path('auxiliary/models/yolov8n_openvino_2022.1_6shave.blob')).resolve().absolute())
-    #nnPath = str((Path(__file__).parent / Path('yolo11n.blob')).resolve().absolute()) # OAK-D LITE SUPPORTS YOLOv5~v8 (!!!)
+    #TODO: change the model path depending on a flag
+    nnPath = str((Path(__file__).parent.parent / Path('auxiliary/models/yolov8n_indoor_5shave.blob')).resolve().absolute())
     print(f"Importing neural network from: {nnPath}.")
     if not Path(nnPath).exists():
         raise FileNotFoundError(f'Required file/s not found')
