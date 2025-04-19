@@ -3,6 +3,14 @@
 auxiliary/config_secret.json
 auxiliary/api_code.py
 code/test_groq.py
+
+# Dataset images and annotations
+02_Model_Training/annotated_outdoor_xml/*
+02_Model_Training/annotated_outdoor_yolo/*
+02_Model_Training/dataset_yolo/*
+02_Model_Training/annotated_outdoor_xml.zip
+02_Model_Training/annotated_outdoor_yolo.zip
+
 # Known models
 code/models/yolo11n.*
 code/models/yolo11n_*
