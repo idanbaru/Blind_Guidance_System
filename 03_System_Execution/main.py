@@ -37,6 +37,7 @@ detection_queue = utilities.RingBufferQueue(maxsize=5)
 speaking_event = threading.Event()
 snapshot_caption_event = threading.Event()  # SnapCap
 speak_lock = threading.Lock()
+latest_frame = [None]  # wrapped in list for closure access
 SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
 TTS_COOLDOWN_CAPTIONING = 15 # seconds
 TTS_COOLDOWN_DETECTIONS = 5 # seconds
@@ -140,8 +141,38 @@ def snapshot_caption_worker(shared_frame_fn):
         time.sleep(50)
 
 
+def video_recorder_thread(latest_frame, stop_event, save_dir="recordings", clip_duration=30):
+    os.makedirs(save_dir, exist_ok=True)
+    
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = 30  # adjust depending on your capture rate
+
+    while not stop_event.is_set():
+        start_time = time.time()
+        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".mp4"
+        filepath = os.path.join(save_dir, filename)
+        writer = None
+
+        print(f"[Video] Recording started: {filename}")
+
+        while time.time() - start_time < clip_duration and not stop_event.is_set():
+            if latest_frame[0] is not None:
+                frame = latest_frame[0].copy()
+                if writer is None:
+                    h, w = frame.shape[:2]
+                    writer = cv2.VideoWriter(filepath, fourcc, fps, (w, h))
+                writer.write(frame)
+            time.sleep(1.0 / fps)
+
+        if writer:
+            writer.release()
+            print(f"[Video] Recording saved: {filename}")
+
+
 #=========== Main Loop =============
 def main():
+    global latest_frame
+
     parser = argparse.ArgumentParser(description="Run OAK-D with optional model path")
     parser.add_argument('--indoor', action='store_true', help='Use indoor model')
     parser.add_argument('--outdoor', action='store_true', help='Use outdoor model')
@@ -163,7 +194,6 @@ def main():
     # Define detection history and last frame
     # TODO: add a detection class with parameters like label, amount detected, depth, center, ...
     history = detection.DetectionHistory()
-    latest_frame = [None]  # wrapped in list for closure access
 
     # TODO: add here the resize logic to 128x128
     def get_latest_frame():
@@ -212,9 +242,20 @@ def main():
             # IMPORTANT: DO NOT REMOVE THIS PART
             # There must be a certain pause between each frame handling to allow the 2 worker threads (speaking the detections and the image captioning) time to execute
             # This is crucial to prevent overloading of the CPU and allow the speaker worker to empty the detection queue in a reasonable time
-            time.sleep(0.005)   # 5 milliseconds
+            time.sleep(0.001)   # 1 milliseconds
 
 
 
 if __name__ == "__main__":
-    main()
+    stop_event = threading.Event()
+    video_thread = threading.Thread(target=video_recorder_thread, args=(latest_frame, stop_event))
+    video_thread.start()
+
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("[Main] Stopping gracefully...")
+    finally:
+        stop_event.set()
+        video_thread.join()
+

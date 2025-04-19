@@ -26,6 +26,8 @@ talk.mp3
 detection.avi
 output.avi
 
+recordings/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
