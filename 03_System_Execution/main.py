@@ -30,7 +30,8 @@ from gtts.tts import gTTSError
 
 
 # === Globals ===
-detection_queue = queue.Queue(maxsize=5)
+#detection_queue = queue.Queue(maxsize=5)
+detection_queue = utilities.RingBufferQueue(maxsize=5)
 speaking_event = threading.Event()
 snapshot_caption_event = threading.Event()  # SnapCap
 speak_lock = threading.Lock()
@@ -79,21 +80,29 @@ def speak(text: str, language='en', caller="detection"):
 def speaker_worker():
     global speaking_event, speak_lock, SYSTEM_LANGUAGE
     SPEAK_COOLDOWN = 2 # seconds
+    DETECTION_TIMOUT = 3 # seconds
     last_spoken_time = 0
     while True:
         # TODO: (detections, insert_time) = queue.get()
-        detections = detection_queue.get()
-        if detections is None:
+        item = detection_queue.get()
+        if item is None:
             break
-        print(detections)
         
+        detections, insert_time = item
         now = time.time()
-        # TODO: check here if time.now() - insert_time > 3 seconds then clear queue and continue (do not speak older detections)
+        
+        if now - insert_time > DETECTION_TIMOUT:
+            print("[Info] Skipped Outdated Detections")
+            continue
+        
         if now - last_spoken_time > SPEAK_COOLDOWN:
             if not speaking_event.is_set():
                 # ONLY EXECUTE IF LOCK IS AVAILABLE
                 with speak_lock:
-                    # TODO: check here if time.now() - insert_time > 3 seconds then clear queue and continue (do not speak older detections)
+                    now = time.time()
+                    if now - insert_time > DETECTION_TIMOUT:
+                        print("[Info] Skipped Outdated Detection (post-lock)")
+                        continue
                     #speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
                     text = "I see: " + " and ".join([d.__repr__() for d in detections])
                     print(text) # TODO: add log functionality to log everything that the system speaks
@@ -180,8 +189,7 @@ def main():
                     if current_detections and history.has_changed(current_detections):
                         #print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
                         print(current_detections)
-                        detection_queue.put(current_detections)
-                        # TODO: add time stamp for each detection and insert it as tuple (current_detections, current_time)
+                        detection_queue.put((current_detections, time.time()))
 
             # IMPORTANT: DO NOT REMOVE THIS PART
             # There must be a certain pause between each frame handling to allow the 2 worker threads (speaking the detections and the image captioning) time to execute
