@@ -22,75 +22,32 @@ cd ~
 SECONDS=0  
 
 ###########################################################################
-# Make apt non-interactive to avoid manual prompts
-export DEBIAN_FRONTEND=noninteractive
+# Install OpenCV if not available
+if ! python3 -c "import cv2" &> /dev/null; then
+    echo "OpenCV not found. Installing..."
+    chmod +x "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
+    "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
+else
+    echo "OpenCV is already installed. Skipping installation."
+fi
 
-# Update package lists
-sudo apt update -yq
+# Install PyTorch if not available
+if ! python3 -c "import torch" &> /dev/null; then
+    echo "PyTorch not found. Installing..."
+    chmod +x "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
+    "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
+else
+    echo "PyTorch is already installed. Skipping installation."
+fi
 
-# Upgrade installed packages
-sudo apt upgrade -yq
-
-# Install required dependencies
-sudo apt install -yq \
-    build-essential \
-    checkinstall \
-    cmake \
-    git \
-    libmbedtls-dev \
-    libasound2-dev \
-    libavcodec-dev \
-    libavdevice-dev \
-    libavfilter-dev \
-    libavformat-dev \
-    libavutil-dev \
-    libcurl4-openssl-dev \
-    libfdk-aac-dev \
-    libfontconfig-dev \
-    libfreetype6-dev \
-    libgl1-mesa-dev \
-    libjack-jackd2-dev \
-    libjansson-dev \
-    libluajit-5.1-dev \
-    libpulse-dev \
-    libqt5x11extras5-dev \
-    libspeexdsp-dev \
-    libswresample-dev \
-    libswscale-dev \
-    libudev-dev \
-    libv4l-dev \
-    libvlc-dev \
-    libx11-dev \
-    libx264-dev \
-    libxcb-shm0-dev \
-    libxcb-xinerama0-dev \
-    libxcomposite-dev \
-    libxinerama-dev \
-    pkg-config \
-    python3-dev \
-    qtbase5-dev \
-    libqt5svg5-dev \
-    swig \
-    libxcb-randr0-dev \
-    libxcb-xfixes0-dev \
-    libx11-xcb-dev \
-    libxcb1-dev
-
-
-# Install OpenCV
-dos2unix "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
-chmod +x "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
-"$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
-
-# Install PyTorch
-dos2unix "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
-chmod +x "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
-"$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
-
-# Install DepthAI
-dos2unix "$SCRIPT_DIR/install_depthai/install_depthai.sh"
-chmod +x "$SCRIPT_DIR/install_depthai/install_depthai.sh"
-"$SCRIPT_DIR/install_depthai/install_depthai.sh"
+# Install DepthAI if not available
+if ! python3 -c "import depthai" &> /dev/null; then
+    echo "DepthAI not found. Installing..."
+    chmod +x "$SCRIPT_DIR/install_depthai/install_depthai.sh"
+    "$SCRIPT_DIR/install_depthai/install_depthai.sh"
+else
+    echo "DepthAI is already installed. Skipping installation."
+fi
 
 # Install mpg123 (to play the synthesized audio)
 sudo apt install mpg123 -y
@@ -109,12 +66,8 @@ sudo -H pip3 install requests
 # Install threading
 sudo -H pip3 install thread6
 
-# Install VSCode (with Python extensions)
-git clone https://github.com/JetsonHacksNano/installVSCode
-cd installVSCode
-./installVSCodeWithPython.sh
-
 ###########################################################################
+
 # Retrieve seconds timer [in sec] and print total time of installation
 duration=$SECONDS
 printf "${GREEN}Installation completed in %02d:%02d:%02d (hh:mm:ss).${NC}\n" \

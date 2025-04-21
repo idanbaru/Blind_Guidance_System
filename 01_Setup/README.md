@@ -1,25 +1,35 @@
 # Getting Started
 In this folder are all the information (and scripts) you need to install the dependencies of this project.
 
+We recommend first letting the os load and run the auto-updater if pops up.
+
+Afterwards, you can continue to installing the system's dependencies. You can either follow the `Simple Installation` which runs automated installation scripts, or follow the `Manual Installation` which guides you how to install each dependency.
+
 ---
 
 ## Simple Installation
 
-If you are lazy, simply run:
+### Update and Verify Important lLbraries
+In your new flashed Jetson Nano device run:
+
+```bash
+chmod +x first_setup.sh
+sudo ./first_setup.sh
+```
+**Note: THIS WILL REBOOT THE SYSTEM!**
+
+This verifies that important libraries are installed. 
+**Note: if you chose to flash the Ubuntu20.04 image, wait for the system updater to pop up and run it instead of running `first_setup.sh`.**
+
+
+Next, for simple (lazy) automated installation, simply run:
 
 ```bash
 chmod +x lazy_setup.sh
 sudo ./lazy_setup.sh
 ```
 
-And let the script install everything (this might take a while). Otherwise, follow the setup steps.
-
-**Note: you might have to run `dos2unix` first:**
-
-```bash
-sudo apt-get install dos2unix
-dos2unix lazy_setup.sh
-```
+And let the script install everything (this might take a while). Otherwise, if you're brave, follow the manual steps.
 
 ---
 
@@ -33,7 +43,7 @@ Each subdirectory here represents an installation needed to be done before runni
 If you feel like it's too much - go back to the simple explanation and save yourself the troubles! But if you want to install it manually, follow the instructions below.
 
 ### First Step: updating and verifying important libraries
-Run `sudo misc/update_and_verify_libs.sh` in your new flashed Jetson Nano device to verify important libraries are installed.
+Run `chmod +x first_setup.sh` followed by `sudo ./first_setup.sh` in your new flashed Jetson Nano device to verify important libraries are installed.
 **Note: THIS WILL REBOOT THE SYSTEM!**
 
 Alternatively, you can manually run the following commands:
