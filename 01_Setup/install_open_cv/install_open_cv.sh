@@ -74,7 +74,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Verifying installation..."
 
     # Verification checks:
-    python3 -c "import cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"
+    python3 -c "import cv2; print(cv2.cuda.getCudaEnabledDeviceCount());"
 
     echo "Verification complete."
 fi

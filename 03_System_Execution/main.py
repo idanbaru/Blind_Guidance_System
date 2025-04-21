@@ -222,7 +222,7 @@ def main():
                         cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
                                         
                         
-                        cv2.putText(frame, text, (x, int(d.ymin * frame.shape[0]) - 10),
+                        cv2.putText(frame, text, (x - 10, int(d.ymin * frame.shape[0]) - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 255, 255), 2, cv2.LINE_AA)
 
