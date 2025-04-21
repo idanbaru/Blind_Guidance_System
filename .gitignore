@@ -26,7 +26,8 @@ talk.mp3
 detection.avi
 output.avi
 
-recordings/*
+# Sessions Directory
+sessions/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,14 +1,13 @@
-# Utilities
 import os
 import time
 from datetime import datetime
 import argparse
+import logging
 import utilities
 from pathlib import Path
 
 # Image detection and deep learning
 import cv2
-#import torch
 import numpy as np
 import detection
 
@@ -20,34 +19,32 @@ import snapshot_captioning
 import depthai as dai
 import oakd_configuration
 
-# Threads for simultaneous threads executing different tasks
+# Threads for simultaneous tasks
 import queue
 import threading
 import subprocess
 
-# Text-to-Speech models (offline & online)
+# Text-to-Speech models
 import pyttsx3
 from gtts import gTTS
 from gtts.tts import gTTSError
 
-
 # === Globals ===
-#detection_queue = queue.Queue(maxsize=5)
 detection_queue = utilities.RingBufferQueue(maxsize=5)
 speaking_event = threading.Event()
-snapshot_caption_event = threading.Event()  # SnapCap
+snapshot_caption_event = threading.Event()
 speak_lock = threading.Lock()
-latest_frame = [None]  # wrapped in list for closure access
-SNAPSHOT_CAPTIONING_INTERVAL = 60  # seconds
-TTS_COOLDOWN_CAPTIONING = 15 # seconds
-TTS_COOLDOWN_DETECTIONS = 5 # seconds
+latest_frame = [None]
+SNAPSHOT_CAPTIONING_INTERVAL = 60
+TTS_COOLDOWN_CAPTIONING = 15
+TTS_COOLDOWN_DETECTIONS = 5
 SYSTEM_LANGUAGE = 'en'
 
 
 class OfflineTTS:
     def __init__(self):
         self.engine = pyttsx3.init()
-    
+
     def setProperty(self, prop, settings):
         self.engine.setProperty(prop, settings)
 
@@ -56,206 +53,214 @@ class OfflineTTS:
         self.engine.runAndWait()
 
 
-#offline_engine = pyttsx3.init()
 tts = OfflineTTS()
 tts.setProperty('rate', 125)
-# === Utility Functions ===
+
+
 def speak(text: str, language='en', caller="detection"):
-    """ Speak text using gTTS (online) or pyttsx3 (offline) """
     global speaking_event, tts, TTS_COOLDOWN_DETECTIONS, TTS_COOLDOWN_CAPTIONING
     if language == 'he':
-        language = 'iw'  # for some reason gtts addresses hebrew as 'iw'
-    # TODO: check if speaking_event is necessary because implementation with lock
+        language = 'iw'
     speaking_event.set()
-    if utilities.is_online() == False:
+    # if not utilities.is_online():
+    #     tts.speak(text)
+    # else:
+    try:
+        gTTS(text=text, lang=language, slow=False).save('talk.mp3')
+        subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except gTTSError:
         tts.speak(text)
-    
-    else:
-        try:
-            gTTS(text=text, lang=language, slow=False).save('talk.mp3')
-            #os.system('mpg123 talk.mp3 > /dev/null 2>&1')
-            subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except gTTSError:
-            tts.speak(text)
     speaking_event.clear()
 
 
 def speaker_worker():
     global speaking_event, speak_lock, SYSTEM_LANGUAGE
-    SPEAK_COOLDOWN = 2 # seconds
-    DETECTION_TIMOUT = 3 # seconds
+    SPEAK_COOLDOWN = 2
+    DETECTION_TIMEOUT = 3
     last_spoken_time = 0
     while True:
-        # TODO: (detections, insert_time) = queue.get()
         item = detection_queue.get()
         if item is None:
             break
-        
+
         detections, insert_time = item
         now = time.time()
-        
-        if now - insert_time > DETECTION_TIMOUT:
-            print("[Info] Skipped Outdated Detections")
+
+        if now - insert_time > DETECTION_TIMEOUT:
+            logging.info("[Info] Skipped Outdated Detections")
             continue
-        
+
         if now - last_spoken_time > SPEAK_COOLDOWN:
             if not speaking_event.is_set():
-                # ONLY EXECUTE IF LOCK IS AVAILABLE
                 with speak_lock:
                     now = time.time()
-                    if now - insert_time > DETECTION_TIMOUT:
-                        print("[Info] Skipped Outdated Detection (post-lock)")
+                    if now - insert_time > DETECTION_TIMEOUT:
+                        logging.info("[Info] Skipped Outdated Detection (post-lock)")
                         continue
-                    #speak_lines = [f"{d.label} at {d.depth:.1f} meters" for d in detections]
                     text = "I see: " + " and ".join([d.__repr__() for d in detections])
-                    print(text) # TODO: add log functionality to log everything that the system speaks
-                    speak(text) # TODO: uncomment this
+                    logging.info(f"[Speak] {text}")
+                    speak(text)
                     last_spoken_time = now
-        
-        #speak(detections)
 
 
 def snapshot_caption_worker(shared_frame_fn):
-    """Call this in a thread, periodically triggers Groq with latest frame"""
     def encode_image_from_cv2(image):
-        _, buffer = cv2.imencode(".jpg", image) 
+        _, buffer = cv2.imencode(".jpg", image)
         return base64.b64encode(buffer).decode("utf-8")
+
     global speak_lock, SYSTEM_LANGUAGE
     GROQ_API_KEY = snapshot_captioning.get_api_key()
     while True:
         time.sleep(10)
-        # if is_online():
         frame = shared_frame_fn()
         if frame is not None:
             b64_frame = encode_image_from_cv2(frame)
-            # TODO: try: here and catch HTML exception after 3 failed requests
             frame_caption = snapshot_captioning.query_groq_with_image(
                 base64_image=b64_frame,
                 api_key=GROQ_API_KEY,
                 language=SYSTEM_LANGUAGE
             )
-            print(frame_caption)
+            logging.info(f"[Caption] {frame_caption}")
             with speak_lock:
                 speak(text=frame_caption, language=SYSTEM_LANGUAGE, caller="captioning")
-        # end if
         time.sleep(50)
 
 
-def video_recorder_thread(latest_frame, stop_event, save_dir="recordings", clip_duration=30):
-    os.makedirs(save_dir, exist_ok=True)
-    
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    fps = 30  # adjust depending on your capture rate
-
-    while not stop_event.is_set():
-        start_time = time.time()
-        filename = datetime.now().strftime("%Y%m%d_%H%M%S") + ".mp4"
-        filepath = os.path.join(save_dir, filename)
-        writer = None
-
-        print(f"[Video] Recording started: {filename}")
-
-        while time.time() - start_time < clip_duration and not stop_event.is_set():
-            if latest_frame[0] is not None:
-                frame = latest_frame[0].copy()
-                if writer is None:
-                    h, w = frame.shape[:2]
-                    writer = cv2.VideoWriter(filepath, fourcc, fps, (w, h))
-                writer.write(frame)
-            time.sleep(1.0 / fps)
-
-        if writer:
-            writer.release()
-            print(f"[Video] Recording saved: {filename}")
-
-
-#=========== Main Loop =============
 def main():
     global latest_frame
 
-    parser = argparse.ArgumentParser(description="Run OAK-D with optional model path")
-    parser.add_argument('--indoor', action='store_true', help='Use indoor model')
-    parser.add_argument('--outdoor', action='store_true', help='Use outdoor model')
     args = parser.parse_args()
 
+    # === Create session directory ===
+    session_time = datetime.now().strftime("%d%m%Y_%H%M%S")
+    session_dir = os.path.join("sessions", session_time)
+    os.makedirs(session_dir, exist_ok=True)
+
+    # === Setup logging ===
+    log_path = os.path.join(session_dir, "log.txt")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.FileHandler(log_path),
+            logging.StreamHandler()
+        ]
+    )
+    logging.info("Session started")
+
+    # Model path
     path = None
-    if args.indoor:
-        print("loading indoor model")
-        path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_indoor_5shave.blob').resolve())
-    elif args.outdoor:
-        print("loading outdoor model")
-        path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_outdoor_5shave.blob').resolve())
-
-    if path:
-        pipeline = oakd_configuration.configure_oakd_camera(nnPath=path)
+    if args.mode:
+        if args.mode == 'indoor':
+            logging.info("Loading indoor model")
+            path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_indoor_5shave.blob').resolve())
+        elif args.mode == 'outdoor':
+            logging.info("Loading outdoor model")
+            path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_outdoor_5shave.blob').resolve())
+        else:
+            logging.error("Invalid mode. Use 'indoor' or 'outdoor'.")
+            exit(1)
     else:
-        pipeline = oakd_configuration.configure_oakd_camera()
+        logging.info("Defaulting to indoor model.")
+        path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_indoor_5shave.blob').resolve())
 
-    # Define detection history and last frame
-    # TODO: add a detection class with parameters like label, amount detected, depth, center, ...
+    pipeline = oakd_configuration.configure_oakd_camera(nnPath=path, mode=args.mode)
     history = detection.DetectionHistory()
 
-    # TODO: add here the resize logic to 128x128
     def get_latest_frame():
         return latest_frame[0]
 
-    # Start background threads
     threading.Thread(target=speaker_worker, daemon=True).start()
     threading.Thread(target=snapshot_caption_worker, args=(get_latest_frame,), daemon=True).start()
 
-    # Connect to the OAK-D Lite device and start pipeline
+    record = args.record
+    clip_duration = 30
+    fps = 12
+    writer = None
+    start_time = time.time()
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
     with dai.Device(pipeline) as device:
         qRgb = device.getOutputQueue(name="rgb", maxSize=1, blocking=False)
         qDet = device.getOutputQueue(name="nn", maxSize=1, blocking=False)
 
         while True:
-            # DEFINITIONS
             current_detections = []
-            
             inRgb = qRgb.tryGet()
             inDet = qDet.tryGet()
 
-            if inRgb is not None:   # AN RGB FRAME WAS CAPTURED
+            if inRgb is not None:
                 frame = inRgb.getCvFrame()
-                latest_frame[0] = frame.copy()  # TODO: lower resolution using CUDA to 128x128
+                raw_frame = frame.copy()
+                latest_frame[0] = raw_frame.copy()
 
-                if inDet is not None:   # THE NN DETECTED OBJECTS IN THE FRAME
+                if inDet is not None:
                     dets = inDet.detections
                     for d in dets:
-                        label = oakd_configuration.labelMap[d.label]
+                        # TODO: for Indoor mode, remove irrelevant classes.
+                        labelMap = oakd_configuration.get_label_map(args.mode)
+                        label = labelMap[d.label]
                         x = int((d.xmin + d.xmax) / 2 * frame.shape[1])
                         y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
-                        z = d.spatialCoordinates.z / 1000.0  # convert millimeters to meters
+                        z = d.spatialCoordinates.z / 1000.0
+                        
+                        current_detection = detection.Detection(label=label, center=(x, y), depth=z)
+                        
+                        location = current_detection.direction()
+                        text = f"{label} ({z:.2f}m) {location}"
+                        
+                        # cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+                        # cv2.putText(frame, text, (x + 10, y - 10),
+                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        #             (255, 255, 255), 2, cv2.LINE_AA)
+                        
+                        # Convert normalized bbox to pixel coordinates
+                        top_left = (int(d.xmin * frame.shape[1]), int(d.ymin * frame.shape[0]))
+                        bottom_right = (int(d.xmax * frame.shape[1]), int(d.ymax * frame.shape[0]))
+
+                        # Draw rectangle based on detection bounding box
+                        cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
+                                        
+                        
+                        cv2.putText(frame, text, (x, int(d.ymin * frame.shape[0]) - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                    (255, 255, 255), 2, cv2.LINE_AA)
+
                         current_detections.append(
-                            detection.Detection(
-                                label=label,
-                                center=(x,y),
-                                depth=z
-                            )
-                        )               
-                    
+                            current_detection
+                        )
+
                     if current_detections and history.has_changed(current_detections):
-                        #print(f"{label} at ({x}, {y}), depth: {z:.2f}m")
-                        print(current_detections)
+                        logging.info(f"[Detections] {current_detections}")
                         detection_queue.put((current_detections, time.time()))
 
-            # IMPORTANT: DO NOT REMOVE THIS PART
-            # There must be a certain pause between each frame handling to allow the 2 worker threads (speaking the detections and the image captioning) time to execute
-            # This is crucial to prevent overloading of the CPU and allow the speaker worker to empty the detection queue in a reasonable time
-            time.sleep(0.001)   # 1 milliseconds
+                if record:
+                    if writer is None:
+                        h, w = frame.shape[:2]
+                        filename = datetime.now().strftime("%d%m%Y_%H%M%S") + ".mp4"
+                        filepath = os.path.join(session_dir, filename)
+                        logging.info(f"[Video] Recording started: {filename}")
+                        writer = cv2.VideoWriter(filepath, fourcc, fps, (w, h))
+                        start_time = time.time()
 
+                    writer.write(frame)
+
+                    if time.time() - start_time > clip_duration:
+                        writer.release()
+                        logging.info(f"[Video] Recording saved.")
+                        writer = None
+
+            time.sleep(0.002)
 
 
 if __name__ == "__main__":
-    stop_event = threading.Event()
-    video_thread = threading.Thread(target=video_recorder_thread, args=(latest_frame, stop_event))
-    video_thread.start()
+    parser = argparse.ArgumentParser(prog="Blind Guidance System",
+                                     description="The system assists visually impaired users via real-time object detection and audio feedback.")
+    parser.add_argument('-m', '--mode', help='Model to use: indoor or outdoor')
+    parser.add_argument('-r', '--record', action='store_true', help='Enable video recording')
 
     try:
         main()
     except KeyboardInterrupt:
-        print("[Main] Stopping gracefully...")
-    finally:
-        stop_event.set()
-        video_thread.join()
-
+        logging.info("[Main] Stopping gracefully...")
+        exit(0)

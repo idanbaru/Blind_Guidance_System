@@ -10,8 +10,7 @@ BB_SCALE_FACTOR = 0.5
 DEPTH_THRESHOLD_LOW = 100 # in millimeters
 DEPTH_THRESHOLD_HIGH = 10000 # in millimeters
 
-#FIXME Change labelMap to support indoor and outdoor settings
-labelMap = [
+labelMap_outdoor = [
             "bus",
             "bus_station",
             "car",
@@ -21,22 +20,22 @@ labelMap = [
             "stairs_down",
             "stairs_up"
         ]
-# labelMap = [
-#         "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
-#         "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",   "parking meter", "bench",
-#         "bird",           "cat",        "dog",           "horse",         "sheep",       "cow",           "elephant",
-#         "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",    "handbag",       "tie",
-#         "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball", "kite",          "baseball bat",
-#         "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",      "wine glass",    "cup",
-#         "fork",           "knife",      "spoon",         "bowl",          "banana",      "apple",         "sandwich",
-#         "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",       "donut",         "cake",
-#         "chair",          "sofa",       "pottedplant",   "bed",           "diningtable", "toilet",        "tvmonitor",
-#         "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",  "microwave",     "oven",
-#         "toaster",        "sink",       "refrigerator",  "book",          "clock",       "vase",          "scissors",
-#         "teddy bear",     "hair drier", "toothbrush"
-#     ]
-
 labelMap_indoor = [
+        "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
+        "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",   "parking meter", "bench",
+        "bird",           "cat",        "dog",           "horse",         "sheep",       "cow",           "elephant",
+        "bear",           "zebra",      "giraffe",       "backpack",      "umbrella",    "handbag",       "tie",
+        "suitcase",       "frisbee",    "skis",          "snowboard",     "sports ball", "kite",          "baseball bat",
+        "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",      "wine glass",    "cup",
+        "fork",           "knife",      "spoon",         "bowl",          "banana",      "apple",         "sandwich",
+        "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",       "donut",         "cake",
+        "chair",          "sofa",       "pottedplant",   "bed",           "diningtable", "toilet",        "tvmonitor",
+        "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",  "microwave",     "oven",
+        "toaster",        "sink",       "refrigerator",  "book",          "clock",       "vase",          "scissors",
+        "teddy bear",     "hair drier", "toothbrush"
+    ]
+
+labelMap_indoor_config = [
         "person", "dog",         "cat",        "backpack",     "umbrella",   "suitcase",
         "bottle", "wine glass",  "cup",        "fork",         "knife",      "spoon",
         "bowl",   "banana",      "apple",      "sandwich",     "orange",     "broccoli",
@@ -56,12 +55,21 @@ def get_nn_path():
         raise FileNotFoundError(f'Required file/s not found')
     return nnPath
 
+def get_label_map(mode="indoor"):
+    if mode == "indoor":
+        return labelMap_indoor
+    elif mode == "outdoor":
+        return labelMap_outdoor
+    else:
+        raise ValueError("Invalid mode. Please specify either 'indoor' or 'outdoor'.")
 
-def configure_oakd_camera(syncNN=True, nnPath=""):
+def configure_oakd_camera(syncNN=True, nnPath="", mode="indoor"):
     # Set neural network path to default in case a path was not passed as an argument
     if nnPath == "":
         nnPath = get_nn_path()
 
+    labelMap = get_label_map(mode=mode)
+    
     # Create pipeline and define sources and outputs
     pipeline = dai.Pipeline()
     camRgb = pipeline.create(dai.node.ColorCamera)
@@ -108,7 +116,7 @@ def configure_oakd_camera(syncNN=True, nnPath=""):
     detectionNetwork.input.setBlocking(False)
 
     # Settings for the Stereo to neural network connection (TODO: check)
-    detectionNetwork.setBoundingBoxScaleFactor(BB_SCALE_FACTOR)  # shrink box for depth avg
+    # detectionNetwork.setBoundingBoxScaleFactor(BB_SCALE_FACTOR)  # shrink box for depth avg
     detectionNetwork.setDepthLowerThreshold(DEPTH_THRESHOLD_LOW)
     detectionNetwork.setDepthUpperThreshold(DEPTH_THRESHOLD_HIGH)
 
@@ -140,6 +148,8 @@ if __name__ == "__main__":
     import numpy as np
     import time
 
+    # Check if the script is running correctly on indoor mode
+    
     syncNN = True
     
     pipeline = configure_oakd_camera(syncNN=syncNN)
@@ -166,7 +176,7 @@ if __name__ == "__main__":
             color = (255, 0, 0)
             for detection in detections:
                 bbox = frameNorm(frame, (detection.xmin, detection.ymin, detection.xmax, detection.ymax))
-                cv2.putText(frame, labelMap[detection.label], (bbox[0] + 10, bbox[1] + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
+                cv2.putText(frame, labelMap_indoor[detection.label], (bbox[0] + 10, bbox[1] + 20), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
                 cv2.putText(frame, f"{int(detection.confidence * 100)}%", (bbox[0] + 10, bbox[1] + 40), cv2.FONT_HERSHEY_TRIPLEX, 0.5, 255)
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
             # Show the frame
