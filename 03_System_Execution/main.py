@@ -62,14 +62,14 @@ def speak(text: str, language='en', caller="detection"):
     if language == 'he':
         language = 'iw'
     speaking_event.set()
-    if not utilities.is_online():
+    # if not utilities.is_online():
+    #     tts.speak(text)
+    # else:
+    try:
+        gTTS(text=text, lang=language, slow=False).save('talk.mp3')
+        subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except gTTSError:
         tts.speak(text)
-    else:
-        try:
-            gTTS(text=text, lang=language, slow=False).save('talk.mp3')
-            subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except gTTSError:
-            tts.speak(text)
     speaking_event.clear()
 
 
@@ -175,7 +175,7 @@ def main():
 
     record = args.record
     clip_duration = 30
-    fps = 15
+    fps = 12
     writer = None
     start_time = time.time()
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -204,19 +204,25 @@ def main():
                         y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
                         z = d.spatialCoordinates.z / 1000.0
                         
-                        cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
-                        
-                        # box_w, box_h = 40, 40  # Width and height of the rectangle
-                        # top_left = (x - box_w // 2, y - box_h // 2)
-                        # bottom_right = (x + box_w // 2, y + box_h // 2)
-                        # cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
-                        
                         current_detection = detection.Detection(label=label, center=(x, y), depth=z)
                         
                         location = current_detection.direction()
-                        
                         text = f"{label} ({z:.2f}m) {location}"
-                        cv2.putText(frame, text, (x + 10, y - 10),
+                        
+                        # cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+                        # cv2.putText(frame, text, (x + 10, y - 10),
+                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        #             (255, 255, 255), 2, cv2.LINE_AA)
+                        
+                        # Convert normalized bbox to pixel coordinates
+                        top_left = (int(d.xmin * frame.shape[1]), int(d.ymin * frame.shape[0]))
+                        bottom_right = (int(d.xmax * frame.shape[1]), int(d.ymax * frame.shape[0]))
+
+                        # Draw rectangle based on detection bounding box
+                        cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
+                                        
+                        
+                        cv2.putText(frame, text, (x, int(d.ymin * frame.shape[0]) - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 255, 255), 2, cv2.LINE_AA)
 
@@ -244,7 +250,7 @@ def main():
                         logging.info(f"[Video] Recording saved.")
                         writer = None
 
-            time.sleep(0.001)
+            time.sleep(0.002)
 
 
 if __name__ == "__main__":
@@ -257,3 +263,4 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         logging.info("[Main] Stopping gracefully...")
+        exit(0)

@@ -116,7 +116,7 @@ def configure_oakd_camera(syncNN=True, nnPath="", mode="indoor"):
     detectionNetwork.input.setBlocking(False)
 
     # Settings for the Stereo to neural network connection (TODO: check)
-    detectionNetwork.setBoundingBoxScaleFactor(BB_SCALE_FACTOR)  # shrink box for depth avg
+    # detectionNetwork.setBoundingBoxScaleFactor(BB_SCALE_FACTOR)  # shrink box for depth avg
     detectionNetwork.setDepthLowerThreshold(DEPTH_THRESHOLD_LOW)
     detectionNetwork.setDepthUpperThreshold(DEPTH_THRESHOLD_HIGH)
 
