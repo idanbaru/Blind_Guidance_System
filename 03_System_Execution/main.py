@@ -164,7 +164,7 @@ def main():
         logging.info("Defaulting to indoor model.")
         path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_indoor_5shave.blob').resolve())
 
-    pipeline = oakd_configuration.configure_oakd_camera(nnPath=path)
+    pipeline = oakd_configuration.configure_oakd_camera(nnPath=path, mode=args.mode)
     history = detection.DetectionHistory()
 
     def get_latest_frame():
@@ -203,14 +203,25 @@ def main():
                         x = int((d.xmin + d.xmax) / 2 * frame.shape[1])
                         y = int((d.ymin + d.ymax) / 2 * frame.shape[0])
                         z = d.spatialCoordinates.z / 1000.0
+                        
                         cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
-                        text = f"{label} ({z:.2f}m)"
+                        
+                        # box_w, box_h = 40, 40  # Width and height of the rectangle
+                        # top_left = (x - box_w // 2, y - box_h // 2)
+                        # bottom_right = (x + box_w // 2, y + box_h // 2)
+                        # cv2.rectangle(frame, top_left, bottom_right, (0, 255, 0), 2)
+                        
+                        current_detection = detection.Detection(label=label, center=(x, y), depth=z)
+                        
+                        location = current_detection.direction()
+                        
+                        text = f"{label} ({z:.2f}m) {location}"
                         cv2.putText(frame, text, (x + 10, y - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 255, 255), 2, cv2.LINE_AA)
 
                         current_detections.append(
-                            detection.Detection(label=label, center=(x, y), depth=z)
+                            current_detection
                         )
 
                     if current_detections and history.has_changed(current_detections):
