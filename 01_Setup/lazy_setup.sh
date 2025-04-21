@@ -22,14 +22,17 @@ cd ~
 SECONDS=0  
 
 ###########################################################################
+# Make apt non-interactive to avoid manual prompts
+export DEBIAN_FRONTEND=noninteractive
+
 # Update package lists
-sudo apt update
+sudo apt update -yq
 
 # Upgrade installed packages
-sudo apt upgrade -y
+sudo apt upgrade -yq
 
 # Install required dependencies
-sudo apt install -y \
+sudo apt install -yq \
     build-essential \
     checkinstall \
     cmake \
@@ -73,16 +76,20 @@ sudo apt install -y \
     libx11-xcb-dev \
     libxcb1-dev
 
+
 # Install OpenCV
+dos2unix "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
 chmod +x "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
 "$SCRIPT_DIR/install_open_cv/install_open_cv.sh"
 
 # Install PyTorch
+dos2unix "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
 chmod +x "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
 "$SCRIPT_DIR/install_pytorch/install_pytorch.sh"
 
 # Install DepthAI
-chmod +x "$SCRIPT_DIR/install_depthai/install_depthai"
+dos2unix "$SCRIPT_DIR/install_depthai/install_depthai.sh"
+chmod +x "$SCRIPT_DIR/install_depthai/install_depthai.sh"
 "$SCRIPT_DIR/install_depthai/install_depthai.sh"
 
 # Install mpg123 (to play the synthesized audio)

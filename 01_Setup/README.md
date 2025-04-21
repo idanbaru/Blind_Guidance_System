@@ -14,6 +14,13 @@ sudo ./lazy_setup.sh
 
 And let the script install everything (this might take a while). Otherwise, follow the setup steps.
 
+**Note: you might have to run `dos2unix` first:**
+
+```bash
+sudo apt-get install dos2unix
+dos2unix lazy_setup.sh
+```
+
 ---
 
 ## Manual Installation

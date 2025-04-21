@@ -27,13 +27,13 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Verifying installation..."
 
     # Verification checks:
-    python3 -c "import torch; import torchvision; \
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'); \
-            print(f'Using device: {device}'); \
-            print(torch.cuda.is_available()); \
-            print(torch.cuda.device_count()); \
-            print(torch.cuda.current_device()); \
-            print(torch.cuda.get_device_name(0))"
+    python3 -c "import torch; import torchvision;"
+    python3 -c "device = torch.device('cuda' if torch.cuda.is_available() else 'cpu');"
+    python3 -c "print(f'Using device: {device}');"
+    python3 -c "print(torch.cuda.is_available());"
+    python3 -c "print(torch.cuda.device_count());"
+    python3 -c "print(torch.cuda.current_device());"
+    python3 -c" print(torch.cuda.get_device_name(0))"
 
     echo "Verification complete."
 fi
