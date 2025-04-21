@@ -14,7 +14,7 @@ labelMap_outdoor = [
             "bus",
             "bus_station",
             "car",
-            "crossroad",
+            "crosswalk",
             "person",
             "pothole",
             "stairs_down",

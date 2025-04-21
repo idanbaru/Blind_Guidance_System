@@ -35,7 +35,7 @@ speaking_event = threading.Event()
 snapshot_caption_event = threading.Event()
 speak_lock = threading.Lock()
 latest_frame = [None]
-SNAPSHOT_CAPTIONING_INTERVAL = 60
+is_online = utilities.is_online()
 TTS_COOLDOWN_CAPTIONING = 15
 TTS_COOLDOWN_DETECTIONS = 5
 SYSTEM_LANGUAGE = 'en'
@@ -62,9 +62,6 @@ def speak(text: str, language='en', caller="detection"):
     if language == 'he':
         language = 'iw'
     speaking_event.set()
-    # if not utilities.is_online():
-    #     tts.speak(text)
-    # else:
     try:
         gTTS(text=text, lang=language, slow=False).save('talk.mp3')
         subprocess.run(['mpg123', 'talk.mp3'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -78,6 +75,7 @@ def speaker_worker():
     SPEAK_COOLDOWN = 2
     DETECTION_TIMEOUT = 3
     last_spoken_time = 0
+    speaker_controler = detection.SpeechController()
     while True:
         item = detection_queue.get()
         if item is None:
@@ -97,24 +95,40 @@ def speaker_worker():
                     if now - insert_time > DETECTION_TIMEOUT:
                         logging.info("[Info] Skipped Outdated Detection (post-lock)")
                         continue
-                    text = "I see: " + " and ".join([d.__repr__() for d in detections])
-                    logging.info(f"[Speak] {text}")
-                    speak(text)
-                    last_spoken_time = now
+                    #text = "I see: " + " and ".join([d.__repr__() for d in detections])
+                    text = speaker_controler.summarize_detections(detections=detections)
+                    if text is not None:
+                        logging.info(f"[Speak] {text}")
+                        speak(text)
+                        last_spoken_time = now
 
 
-def snapshot_caption_worker(shared_frame_fn):
+def snapshot_caption_worker(shared_frame_fn):    
     def encode_image_from_cv2(image):
         _, buffer = cv2.imencode(".jpg", image)
         return base64.b64encode(buffer).decode("utf-8")
 
-    global speak_lock, SYSTEM_LANGUAGE
+    global speak_lock, SYSTEM_LANGUAGE, is_online
     GROQ_API_KEY = snapshot_captioning.get_api_key()
     while True:
+        start_time = time.time()
         time.sleep(10)
         frame = shared_frame_fn()
         if frame is not None:
             b64_frame = encode_image_from_cv2(frame)
+            if (not utilities.is_online()):
+                logging.info(f"[Caption] failed to connect Groq, skipping...")
+                if is_online:
+                    is_online = False
+                    with speak_lock:
+                        speak(text="system is offline")
+                time.sleep(10)
+                continue
+            else:
+                if not is_online:
+                    is_online = True
+                    with speak_lock:
+                        speak(text="system back online!")
             frame_caption = snapshot_captioning.query_groq_with_image(
                 base64_image=b64_frame,
                 api_key=GROQ_API_KEY,
@@ -123,7 +137,8 @@ def snapshot_caption_worker(shared_frame_fn):
             logging.info(f"[Caption] {frame_caption}")
             with speak_lock:
                 speak(text=frame_caption, language=SYSTEM_LANGUAGE, caller="captioning")
-        time.sleep(50)
+        while time.time() - start_time < 50:
+            time.sleep(5)
 
 
 def main():
@@ -160,9 +175,6 @@ def main():
         else:
             logging.error("Invalid mode. Use 'indoor' or 'outdoor'.")
             exit(1)
-    else:
-        logging.info("Defaulting to indoor model.")
-        path = str((Path(__file__).parent.parent / 'auxiliary/models/yolov8n_indoor_5shave.blob').resolve())
 
     pipeline = oakd_configuration.configure_oakd_camera(nnPath=path, mode=args.mode)
     history = detection.DetectionHistory()
@@ -209,22 +221,22 @@ def main():
                         location = current_detection.direction()
                         text = f"{label} ({z:.2f}m) {location}"
                         
-                        # cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
-                        # cv2.putText(frame, text, (x + 10, y - 10),
-                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                        #             (255, 255, 255), 2, cv2.LINE_AA)
-                        
-                        # Convert normalized bbox to pixel coordinates
-                        top_left = (int(d.xmin * frame.shape[1]), int(d.ymin * frame.shape[0]))
-                        bottom_right = (int(d.xmax * frame.shape[1]), int(d.ymax * frame.shape[0]))
-
-                        # Draw rectangle based on detection bounding box
-                        cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
-                                        
-                        
-                        cv2.putText(frame, text, (x - 10, int(d.ymin * frame.shape[0]) - 10),
+                        cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
+                        cv2.putText(frame, text, (x + 10, y - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.5,
                                     (255, 255, 255), 2, cv2.LINE_AA)
+                        
+                        # # Convert normalized bbox to pixel coordinates
+                        # top_left = (int(d.xmin * frame.shape[1]), int(d.ymin * frame.shape[0]))
+                        # bottom_right = (int(d.xmax * frame.shape[1]), int(d.ymax * frame.shape[0]))
+
+                        # # Draw rectangle based on detection bounding box
+                        # cv2.rectangle(frame, top_left, bottom_right, (255, 0, 0), 2)
+                                        
+                        
+                        # cv2.putText(frame, text, (x - 10, int(d.ymin * frame.shape[0]) - 10),
+                        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                        #             (255, 255, 255), 2, cv2.LINE_AA)
 
                         current_detections.append(
                             current_detection
@@ -256,7 +268,7 @@ def main():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(prog="Blind Guidance System",
                                      description="The system assists visually impaired users via real-time object detection and audio feedback.")
-    parser.add_argument('-m', '--mode', help='Model to use: indoor or outdoor')
+    parser.add_argument('-m', '--mode', default='indoor', help='Model to use: indoor or outdoor')
     parser.add_argument('-r', '--record', action='store_true', help='Enable video recording')
 
     try:

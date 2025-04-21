@@ -1,11 +1,66 @@
-# LIST OF LABELS WHICH REQUIRES ATTENTION & FURTHER DETAILS
-requires_attention = ['pothole', 'crossroad', 'bus_station']
+import time
+from collections import Counter
+
+URGENT_CLASSES = {"crosswalk", "stairs", "bus", "keyboard"}
+CASUAL_CLASSES = {"person", "car", "bus_station"}
+CASUAL_THRESHOLD = 3
+CASUAL_TIMEOUT = 20  # seconds before repeating casual summary
+URGENT_TIMEOUT = 10  # seconds before repeating urgent warning
+
+
+class SpeechController:
+    def __init__(self):
+        self.last_urgent_spoken = {}  # label -> timestamp
+        self.last_casual_spoken = 0  # timestamp
+
+    def summarize_detections(self, detections):
+        """Return a spoken string based on detection priority and frequency"""
+        now = time.time()
+        urgent_lines = []
+        casual_counter = Counter()
+
+        # if there are not detections return None
+        if len(detections) == 0:
+            return None
+        
+        for d in detections:
+            if d.label in URGENT_CLASSES:
+                if (now - self.last_urgent_spoken.get(d.label, 0)) > URGENT_TIMEOUT:
+                    urgent_lines.append(f"{d.label} ahead at {d.depth:.1f} meters on your {d.location}")
+                    self.last_urgent_spoken[d.label] = now
+            elif d.label in CASUAL_CLASSES:
+                casual_counter[d.label] += 1
+
+        # Urgent always gets priority
+        if urgent_lines:
+            return "Attention: " + ", ".join(urgent_lines)
+        
+        # Add casual if timeout has passed and not already speaking urgent
+        if not urgent_lines and (now - self.last_casual_spoken) > CASUAL_TIMEOUT and casual_counter:
+            casual_descriptions = []
+            single_detection = False
+            for label, count in casual_counter.items():
+                if count >= CASUAL_THRESHOLD:
+                    casual_descriptions.append(f"many {label}s")
+                else:
+                    if count == 1:
+                        single_detection = True
+                    casual_descriptions.append(f"{count} {label}" + ("s" if count > 1 else ""))
+            self.last_casual_spoken = now
+            if single_detection and len(casual_descriptions) == 1:
+                return f"There is {casual_descriptions[0]} around."
+            else:
+                return f"There are " + " and ".join(casual_descriptions) + " around."
 
 class Detection:
     def __init__(self, label, center=(0,0), depth=0):
-        self.label = label
+        if label == "bus_station":
+            self.label = "bus station"
+        else:
+            self.label = label
         self.center = center
         self.depth = depth
+        self.location = self.direction()
     
     # TODO: edit magic 25 and 2 numbers depends on image resulotion
     def __eq__(self, other):

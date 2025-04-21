@@ -3,7 +3,7 @@ import threading
 
 # ===== DEFINITIONS =====
 TTS_COOLDOWN = 2 # seconds
-ONLINE_CHECK_TIMEOUT = 0.2 # seconds
+ONLINE_CHECK_TIMEOUT = 2 # seconds
 OFFLINE_TRANSITION_TEXT = "System now working offline..."
 ONLINE_TRANSITION_TEXT = "System back online!"
 

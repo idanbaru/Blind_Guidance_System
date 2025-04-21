@@ -1,7 +1,7 @@
 from collections import Counter, defaultdict
 import time
 
-URGENT_CLASSES = {"crossroads", "stairs", "bus"}
+URGENT_CLASSES = {"crosswalk", "stairs", "bus"}
 CASUAL_CLASSES = {"person", "car"}
 CASUAL_THRESHOLD = 3
 CASUAL_TIMEOUT = 20  # seconds before repeating casual summary
@@ -68,7 +68,7 @@ if current_detections != [] and history.has_changed(current_detections):
 
 
 CUSTOM_PHRASES = {
-    "crossroads": "Crossroads detected {depth:.1f} meters ahead.",
+    "crosswalks": "Crosswalks detected {depth:.1f} meters ahead.",
     "stairs": "Stairs ahead at {depth:.1f} meters. Please be careful.",
     "bus": "A bus is nearby at {depth:.1f} meters.",
 }
