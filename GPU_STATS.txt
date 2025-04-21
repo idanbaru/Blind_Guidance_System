@@ -1,0 +1,25 @@
+Mon Apr 21 13:36:56 2025       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 535.183.01             Driver Version: 535.183.01   CUDA Version: 12.2     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  NVIDIA GeForce RTX 3090        Off | 00000000:0A:00.0  On |                  N/A |
+|  0%   48C    P8              29W / 370W |    474MiB / 24576MiB |      4%      Default |
+|                                         |                      |                  N/A |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|    0   N/A  N/A    122803      G   /usr/lib/xorg/Xorg                          162MiB |
+|    0   N/A  N/A    123095      G   /usr/bin/gnome-shell                         43MiB |
+|    0   N/A  N/A    123603      G   /usr/libexec/xdg-desktop-portal-gnome        49MiB |
+|    0   N/A  N/A    126185      G   /usr/bin/nautilus                            37MiB |
+|    0   N/A  N/A    126958      G   ...erProcess --variations-seed-version       35MiB |
+|    0   N/A  N/A    135366      G   ...irefox/6042/usr/lib/firefox/firefox      123MiB |
++---------------------------------------------------------------------------------------+

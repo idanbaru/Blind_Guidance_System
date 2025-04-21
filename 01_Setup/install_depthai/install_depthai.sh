@@ -14,10 +14,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     echo "Verifying installation..."
 
     # Verification checks:
-    python3 -c "import depthai; print(depthai.__version__) \
-        import cv2; print(cv2.cuda.getCudaEnabledDeviceCount()) \
-        import torch; print(torch.cuda.get_device_name(0)) \
-        import depthai; print(depthai.Device.getAllAvailableDevices())"
+    python3 -c "import depthai; print(depthai.__version__)"
+    python3 -c "import cv2; print(cv2.cuda.getCudaEnabledDeviceCount())"
+    python3 -c "import torch; print(torch.cuda.get_device_name(0))"
+    python3 -c "import depthai; print(depthai.Device.getAllAvailableDevices())"
         
     echo "Verification complete."
 fi
