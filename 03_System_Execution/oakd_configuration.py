@@ -8,7 +8,7 @@ CONFIDENCE_THRESHOLD = 0.5
 
 BB_SCALE_FACTOR = 0.5
 DEPTH_THRESHOLD_LOW = 100 # in millimeters
-DEPTH_THRESHOLD_HIGH = 10000 # in millimeters
+DEPTH_THRESHOLD_HIGH = 100000 # in millimeters
 
 labelMap_outdoor = [
             "bus",
