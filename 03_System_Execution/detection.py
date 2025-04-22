@@ -9,8 +9,8 @@ CASUAL_CLASSES_INDOOR = set(oakd_configuration.labelMap_indoor_config)
 CASUAL_CLASSES = CASUAL_CLASSES_OUTDOOR | CASUAL_CLASSES_INDOOR
 MANY_DETECTION_THRESHOLD = 3
 CASUAL_THRESHOLD = 5
-CASUAL_TIMEOUT = 15  # seconds before repeating casual summary
-URGENT_TIMEOUT = 10  # seconds before repeating urgent warning
+CASUAL_TIMEOUT = 10  # seconds before repeating casual summary
+URGENT_TIMEOUT = 5  # seconds before repeating urgent warning
 
 
 class SpeechController:
@@ -67,7 +67,7 @@ class SpeechController:
                             casual_descriptions.append(f"a {label}")
                     else:
                         if say_depth:
-                            for i in count:
+                            for i in range(count):
                                 casual_descriptions.append(f"a {label} at {depth[i]:.1f} meters on your {location[i]}")
                         else:
                             casual_descriptions.append(f"{count} {label}" + ("s" if (count > 1 and label not in ["people"]) else ""))
@@ -75,7 +75,7 @@ class SpeechController:
             if single_detection and len(casual_descriptions) == 1:
                 return f"There is {casual_descriptions[0]} " + ("around" if (not say_depth) else "")
             else:
-                return f"There are " + " and ".join(casual_descriptions) + + ("around" if (not say_depth) else "")
+                return f"There are " + " and ".join(casual_descriptions) + ("around" if (not say_depth) else "")
 
 class Detection:
     def __init__(self, label, center=(0,0), depth=0):
