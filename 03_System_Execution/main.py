@@ -20,7 +20,6 @@ import depthai as dai
 import oakd_configuration
 
 # Threads for simultaneous tasks
-import queue
 import threading
 import subprocess
 
@@ -96,7 +95,6 @@ def speaker_worker():
                         logging.info("[Info] Skipped Outdated Detection (post-lock)")
                         continue
                     #text = "I see: " + " and ".join([d.__repr__() for d in detections])
-                    print(f"detections before speaking: {detections}")
                     text = speaker_controler.summarize_detections(detections=detections)
                     if text is not None:
                         logging.info(f"[Speak] {text}")

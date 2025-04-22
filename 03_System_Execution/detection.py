@@ -1,14 +1,14 @@
 import time
 import oakd_configuration
-from collections import Counter
+from collections import defaultdict
 
 
 URGENT_CLASSES = {"crosswalk", "stairs assending", "stairs descending", "bus"}
 CASUAL_CLASSES_OUTDOOR = {"person", "car", "bus station"}
 CASUAL_CLASSES_INDOOR = set(oakd_configuration.labelMap_indoor_config)
 CASUAL_CLASSES = CASUAL_CLASSES_OUTDOOR | CASUAL_CLASSES_INDOOR
-print(CASUAL_CLASSES)
-CASUAL_THRESHOLD = 3
+MANY_DETECTION_THRESHOLD = 3
+CASUAL_THRESHOLD = 5
 CASUAL_TIMEOUT = 15  # seconds before repeating casual summary
 URGENT_TIMEOUT = 10  # seconds before repeating urgent warning
 
@@ -22,7 +22,7 @@ class SpeechController:
         """Return a spoken string based on detection priority and frequency"""
         now = time.time()
         urgent_lines = []
-        casual_counter = Counter()
+        casual_detections = defaultdict(lambda: {"count": 0, "depth": [], "location": []})
 
         # if there are not detections return None
         if len(detections) == 0:
@@ -34,32 +34,48 @@ class SpeechController:
                     urgent_lines.append(f"{d.label} ahead at {d.depth:.1f} meters on your {d.location}")
                     self.last_urgent_spoken[d.label] = now
             elif d.label in CASUAL_CLASSES:
-                casual_counter[d.label] += 1
+                casual_detections[d.label]["count"] += 1
+                casual_detections[d.label]["depth"].append(d.depth)
+                casual_detections[d.label]["location"].append(d.location)
 
         # Urgent always gets priority
         if urgent_lines:
             return "Attention: " + ", ".join(urgent_lines)
         
-        print(f"casual counter: {casual_counter}")
-        
+        # Casual Classes:
         # Add casual if timeout has passed and not already speaking urgent
-        if not urgent_lines and (now - self.last_casual_spoken) > CASUAL_TIMEOUT and casual_counter:
+        if not urgent_lines and (now - self.last_casual_spoken) > CASUAL_TIMEOUT and len(casual_detections) > 0:
+            # if there are <= 3 detections also say the depth
+            say_depth = True if (sum(1 for d in detections) <= MANY_DETECTION_THRESHOLD) else False
             casual_descriptions = []
             single_detection = False
-            for label, count in casual_counter.items():                  
-                if label == "person" and count > 1:
+            for label, info in casual_detections.items():                  
+                count = info["count"]
+                depth = info["depth"]
+                location = info["location"]
+                
+                if label == "person" and count > MANY_DETECTION_THRESHOLD:
                     label = "people"
-                if count >= CASUAL_THRESHOLD:
+                if count > CASUAL_THRESHOLD:
                     casual_descriptions.append(f"many {label}s")
                 else:
                     if count == 1:
                         single_detection = True
-                    casual_descriptions.append(f"{count} {label}" + ("s" if (count > 1 and label not in ["people"]) else ""))
+                        if say_depth:
+                            casual_descriptions.append(f"a {label} at {depth[0]:.1f} meters on your {location[0]}")
+                        else:
+                            casual_descriptions.append(f"a {label}")
+                    else:
+                        if say_depth:
+                            for i in count:
+                                casual_descriptions.append(f"a {label} at {depth[i]:.1f} meters on your {location[i]}")
+                        else:
+                            casual_descriptions.append(f"{count} {label}" + ("s" if (count > 1 and label not in ["people"]) else ""))
             self.last_casual_spoken = now
             if single_detection and len(casual_descriptions) == 1:
-                return f"There is {casual_descriptions[0]} around."
+                return f"There is {casual_descriptions[0]} " + ("around" if (not say_depth) else "")
             else:
-                return f"There are " + " and ".join(casual_descriptions) + " around."
+                return f"There are " + " and ".join(casual_descriptions) + + ("around" if (not say_depth) else "")
 
 class Detection:
     def __init__(self, label, center=(0,0), depth=0):
