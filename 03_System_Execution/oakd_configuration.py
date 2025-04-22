@@ -12,14 +12,15 @@ DEPTH_THRESHOLD_HIGH = 100000 # in millimeters
 
 labelMap_outdoor = [
             "bus",
-            "bus_station",
+            "bus station",
             "car",
             "crosswalk",
             "person",
             "pothole",
-            "stairs_down",
-            "stairs_up"
+            "stairs descending",
+            "stairs assending"
         ]
+
 labelMap_indoor = [
         "person",         "bicycle",    "car",           "motorbike",     "aeroplane",   "bus",           "train",
         "truck",          "boat",       "traffic light", "fire hydrant",  "stop sign",   "parking meter", "bench",
@@ -29,18 +30,19 @@ labelMap_indoor = [
         "baseball glove", "skateboard", "surfboard",     "tennis racket", "bottle",      "wine glass",    "cup",
         "fork",           "knife",      "spoon",         "bowl",          "banana",      "apple",         "sandwich",
         "orange",         "broccoli",   "carrot",        "hot dog",       "pizza",       "donut",         "cake",
-        "chair",          "sofa",       "pottedplant",   "bed",           "diningtable", "toilet",        "tvmonitor",
+        "chair",          "sofa",       "pottedplant",   "bed",           "table",       "toilet",        "monitor",
         "laptop",         "mouse",      "remote",        "keyboard",      "cell phone",  "microwave",     "oven",
         "toaster",        "sink",       "refrigerator",  "book",          "clock",       "vase",          "scissors",
-        "teddy bear",     "hair drier", "toothbrush"
+        "toy",            "hair drier", "toothbrush"
     ]
 
+# configuare the classes that will be spoken in indoor mode.
 labelMap_indoor_config = [
         "person", "dog",         "cat",        "backpack",     "umbrella",   "suitcase",
         "bottle", "wine glass",  "cup",        "fork",         "knife",      "spoon",
         "bowl",   "banana",      "apple",      "sandwich",     "orange",     "broccoli",
         "carrot", "hot dog",     "pizza",      "donut",        "cake",       "chair",
-        "sofa",   "pottedplant", "bed",        "diningtable",  "toilet",     "tvmonitor",
+        "sofa",   "pottedplant", "bed",        "table",        "toilet",     "monitor",
         "laptop", "mouse",       "remote",     "keyboard",     "cell phone", "microwave", 
         "oven",   "toaster",     "sink",       "refrigerator", "book",       "clock",
         "vase",   "scissors",    "hair drier", "toothbrush"

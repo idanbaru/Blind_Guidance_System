@@ -1,10 +1,15 @@
 import time
+import oakd_configuration
 from collections import Counter
 
-URGENT_CLASSES = {"crosswalk", "stairs", "bus", "keyboard"}
-CASUAL_CLASSES = {"person", "car", "bus_station"}
+
+URGENT_CLASSES = {"crosswalk", "stairs assending", "stairs descending", "bus"}
+CASUAL_CLASSES_OUTDOOR = {"person", "car", "bus station"}
+CASUAL_CLASSES_INDOOR = set(oakd_configuration.labelMap_indoor_config)
+CASUAL_CLASSES = CASUAL_CLASSES_OUTDOOR | CASUAL_CLASSES_INDOOR
+print(CASUAL_CLASSES)
 CASUAL_THRESHOLD = 3
-CASUAL_TIMEOUT = 20  # seconds before repeating casual summary
+CASUAL_TIMEOUT = 15  # seconds before repeating casual summary
 URGENT_TIMEOUT = 10  # seconds before repeating urgent warning
 
 
@@ -35,17 +40,21 @@ class SpeechController:
         if urgent_lines:
             return "Attention: " + ", ".join(urgent_lines)
         
+        print(f"casual counter: {casual_counter}")
+        
         # Add casual if timeout has passed and not already speaking urgent
         if not urgent_lines and (now - self.last_casual_spoken) > CASUAL_TIMEOUT and casual_counter:
             casual_descriptions = []
             single_detection = False
-            for label, count in casual_counter.items():
+            for label, count in casual_counter.items():                  
+                if label == "person" and count > 1:
+                    label = "people"
                 if count >= CASUAL_THRESHOLD:
                     casual_descriptions.append(f"many {label}s")
                 else:
                     if count == 1:
                         single_detection = True
-                    casual_descriptions.append(f"{count} {label}" + ("s" if count > 1 else ""))
+                    casual_descriptions.append(f"{count} {label}" + ("s" if (count > 1 and label not in ["people"]) else ""))
             self.last_casual_spoken = now
             if single_detection and len(casual_descriptions) == 1:
                 return f"There is {casual_descriptions[0]} around."
@@ -54,10 +63,7 @@ class SpeechController:
 
 class Detection:
     def __init__(self, label, center=(0,0), depth=0):
-        if label == "bus_station":
-            self.label = "bus station"
-        else:
-            self.label = label
+        self.label = label
         self.center = center
         self.depth = depth
         self.location = self.direction()
@@ -86,22 +92,3 @@ class Detection:
     # if label in requires_attention return Attention! {self.label} coming from the {direction(self.center[0])} in {self.depth} meters.
     def __repr__(self):
         return f"{self.label} in {self.depth:.2f} meters to the {self.direction()}"
-
-
-class DetectionHistory:
-    def __init__(self, max_len=10):
-        self.history = []
-        self.max_len = max_len
-
-    def is_empty(self):
-        if len(self.history) == 0:
-            return True
-        return False
-
-    def has_changed(self, current_detections):
-        if not self.history or self.history[-1] != current_detections:
-            self.history.append(current_detections)
-            if len(self.history) > self.max_len:
-                self.history.pop(0)
-            return True
-        return False

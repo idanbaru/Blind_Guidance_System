@@ -96,6 +96,7 @@ def speaker_worker():
                         logging.info("[Info] Skipped Outdated Detection (post-lock)")
                         continue
                     #text = "I see: " + " and ".join([d.__repr__() for d in detections])
+                    print(f"detections before speaking: {detections}")
                     text = speaker_controler.summarize_detections(detections=detections)
                     if text is not None:
                         logging.info(f"[Speak] {text}")
@@ -177,8 +178,7 @@ def main():
             exit(1)
 
     pipeline = oakd_configuration.configure_oakd_camera(nnPath=path, mode=args.mode)
-    history = detection.DetectionHistory()
-
+    
     def get_latest_frame():
         return latest_frame[0]
 
@@ -221,10 +221,15 @@ def main():
                         location = current_detection.direction()
                         text = f"{label} ({z:.2f}m) {location}"
                         
-                        cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
-                        cv2.putText(frame, text, (x + 10, y - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5,
-                                    (255, 255, 255), 2, cv2.LINE_AA)
+                        cv2.circle(frame, (x, y), 5, (0, 0, 255), -1)
+                        if args.mode == "indoor":
+                            cv2.putText(frame, text, (x + 10, y - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                        (255, 255, 255), 2, cv2.LINE_AA)
+                        else:
+                            cv2.putText(frame, text, (x + 10, y - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                                        (255, 255, 255), 2, cv2.LINE_AA)
                         
                         # # Convert normalized bbox to pixel coordinates
                         # top_left = (int(d.xmin * frame.shape[1]), int(d.ymin * frame.shape[0]))
@@ -242,7 +247,7 @@ def main():
                             current_detection
                         )
 
-                    if current_detections and history.has_changed(current_detections):
+                    if current_detections:
                         logging.info(f"[Detections] {current_detections}")
                         detection_queue.put((current_detections, time.time()))
 
