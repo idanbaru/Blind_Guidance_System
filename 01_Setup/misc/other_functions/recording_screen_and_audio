@@ -1,2 +1,8 @@
+## With Microphone using device 'hw:2,0' (card, device)
 gst-launch-1.0 -e     ximagesrc use-damage=0 ! video/x-raw ! nvvidconv ! 'video/x-raw(memory:NVMM),format=NV12' ! nvv4l2h264enc ! h264parse ! queue ! mux.     alsasrc device=hw:2,0 ! audioconvert ! volume volume=2.0 ! queue ! voaacenc bitrate=128000 ! aacparse ! queue ! mux.     qtmux name=mux ! filesink location=screen_record.mp4
+
+## Only Screen
+gst-launch-1.0 -e     ximagesrc use-damage=0 ! video/x-raw ! nvvidconv ! 'video/x-raw(memory:NVMM),format=NV12' ! nvv4l2h264enc ! h264parse ! queue ! mux.    qtmux name=mux ! filesink location="screen_record_$(date +%Y%m%d_%H%M%S).mp4"
+
+
 
